@@ -30,8 +30,8 @@ def mount_drive():
         from google.colab import drive
         drive.mount("/content/drive", force_remount=False)
         print("[✓] Google Drive mounted.")
-    except ImportError:
-        print("[INFO] Not running in Colab — skipping Drive mount.")
+    except (ImportError, AttributeError):
+        print("[INFO] Not running in an interactive Colab kernel — skipping Drive mount.")
 
 
 def checkpoint_exists() -> bool:
