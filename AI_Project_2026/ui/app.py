@@ -186,31 +186,19 @@ def _build_quiz_items(
         else:
             distractors = []
 
-        options_pool = [answer_chunk] + distractors[:3]
+        options_pool = [(answer_chunk, True)]
+        for d in distractors[:3]:
+            options_pool.append((d, False))
+            
         while len(options_pool) < 4:
-            options_pool.append("(No distractor available)")
+            options_pool.append(("(No distractor available)", False))
 
-        indexed_options = list(enumerate(options_pool))
-        random.shuffle(indexed_options)
+        random.shuffle(options_pool)
 
-        shuffled_options = [text for _, text in indexed_options]
-        correct_idx      = next(
-            i for i, (orig_idx, _) in enumerate(indexed_options) if orig_idx == 0
+        shuffled_options = [text for text, _ in options_pool]
+        shuffled_correct_idx = next(
+            i for i, (_, is_true) in enumerate(options_pool) if is_true
         )
-
-        correct_label_idx = 0
-
-        if ensemble is not None:
-            scored = [
-                verify_option(
-                    question_stem, opt, article, vectorizer, ensemble
-                )
-                for opt in shuffled_options
-            ]
-            confidences = [conf for _, conf in scored]
-            correct_label_idx = int(np.argmax(confidences))
-
-        shuffled_correct_idx = correct_label_idx
 
         raw_hints = generate_hints(question_stem, article, vectorizer)
         masked_hints = [

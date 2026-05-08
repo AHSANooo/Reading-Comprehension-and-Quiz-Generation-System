@@ -29,6 +29,8 @@ Word2Vec model and evaluation scores are persisted and skipped on re-runs.
 
 import os
 import warnings
+import re
+import random
 
 import joblib
 import nltk
@@ -212,20 +214,37 @@ def generate_distractors(
         if token in vocab
     ]
 
-    if not answer_vectors:
-        return []
+    distractors = []
 
-    mean_vector = np.mean(answer_vectors, axis=0)
+    if answer_vectors:
+        mean_vector = np.mean(answer_vectors, axis=0)
+        raw_neighbours = vocab.similar_by_vector(mean_vector, topn=W2V_TOP_NEIGHBOURS)
+        
+        for word, _ in raw_neighbours:
+            if len(distractors) >= n:
+                break
+            if word not in passage_tokens and len(word) >= 3:
+                if re.match(r"^[a-zA-Z\s]+$", word):
+                    distractors.append(word)
 
-    raw_neighbours = vocab.similar_by_vector(mean_vector, topn=W2V_TOP_NEIGHBOURS)
+    if len(distractors) < n:
+        try:
+            nltk_words = nltk.corpus.words.words()
+        except LookupError:
+            nltk.download("words", quiet=True)
+            nltk_words = nltk.corpus.words.words()
 
-    distractors = [
-        word
-        for word, _ in raw_neighbours
-        if word not in passage_tokens and len(word) >= MIN_CANDIDATE_LEN
-    ]
+        valid_fallback = [
+            w for w in nltk_words 
+            if len(w) >= 3 and w.lower() not in passage_tokens and re.match(r"^[a-zA-Z\s]+$", w)
+        ]
 
-    return distractors[:n]
+        while len(distractors) < n and valid_fallback:
+            fallback_word = random.choice(valid_fallback)
+            if fallback_word not in distractors:
+                distractors.append(fallback_word)
+
+    return distractors
 
 
 # ══════════════════════════════════════════════════════════════════════════════
