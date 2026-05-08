@@ -14,6 +14,9 @@ from sklearn.model_selection import train_test_split
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR       = "/content/drive/MyDrive/AI_Project_2026"
+if not os.path.isdir(BASE_DIR):
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 RAW_CSV        = os.path.join(BASE_DIR, "dataset", "dev.csv")
 PROCESSED_DIR  = os.path.join(BASE_DIR, "processed")
 

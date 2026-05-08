@@ -55,6 +55,9 @@ for _pkg in ("wordnet", "punkt", "punkt_tab", "omw-1.4"):
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR      = "/content/drive/MyDrive/AI_Project_2026"
+if not os.path.isdir(BASE_DIR):
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 PROCESSED_DIR = os.path.join(BASE_DIR, "processed")
 MODELS_DIR    = os.path.join(BASE_DIR, "models")
 

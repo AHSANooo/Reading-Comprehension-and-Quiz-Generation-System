@@ -41,8 +41,11 @@ for _pkg in ("wordnet", "punkt", "punkt_tab", "averaged_perceptron_tagger",
              "maxent_ne_chunker_tab", "words", "omw-1.4"):
     nltk.download(_pkg, quiet=True)
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# ── Configuration & Paths ─────────────────────────────────────────────────────
 BASE_DIR   = "/content/drive/MyDrive/AI_Project_2026"
+if not os.path.isdir(BASE_DIR):
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 VECTORIZER_PKL  = os.path.join(MODELS_DIR, "tfidf_vectorizer.pkl")
