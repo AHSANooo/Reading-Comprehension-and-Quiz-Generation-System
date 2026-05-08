@@ -1,33 +1,32 @@
 """
 model_a_train.py
 ----------------
-Model A  —  Question Extractor  +  Answer Verifier  +  K-Means Clusterer
+Model A  —  Fill-in-the-Blank Extractor  +  Soft Voting Verifier  +  K-Means Clusterer
 
 Components
 ----------
-1. Question Extractor
-   Scores every sentence in the article against the correct answer using
-   cosine similarity (TF-IDF vectors).  The highest-scoring sentence is
-   returned as the "generated question stem."
+1. Question Extractor (fill-in-the-blank)
+   Selects the sentence from the article most similar to the correct answer
+   via TF-IDF cosine similarity.  A key noun chunk within that sentence is
+   identified via POS tagging and replaced with "__________".
 
-2. Verifier (Logistic Regression)
-   Binary classifier: given a TF-IDF vector of (article + option), predict
-   whether that option is the correct answer (label = 1) or not (label = 0).
-   Saved as  models/verifier_model.pkl
+2. Verifier (Soft Voting Ensemble)
+   Three classifiers vote with probability averaging:
+     - Logistic Regression  (C tuned via GridSearchCV)
+     - Multinomial Naive Bayes
+     - SGDClassifier  (loss='log_loss')
+   Saved as  models/verifier_ensemble_model.pkl
 
-3. Clusterer (K-Means)
-   Clusters question-answer pair vectors into K groups for thematic
-   organisation.
+3. Clusterer (Mini-Batch K-Means)
+   Clusters question-answer pair vectors for thematic organisation.
    Saved as  models/kmeans_model.pkl
 
-4. Evaluation (Question Extraction quality on val.csv)
-   Compares extracted sentence to the gold-standard question using
-   BLEU, ROUGE-1/2/L, and METEOR.  Results are printed to stdout.
+4. Evaluation  (val.csv)
+   BLEU, ROUGE-1/2/L, METEOR comparing extracted stems to gold questions.
 
 Checkpointing
 -------------
-Every heavy artefact is saved as a .pkl.  If the file exists on the next
-run the computation is skipped entirely.
+Each heavy artefact is persisted as .pkl and skipped on subsequent runs.
 """
 
 import os
@@ -42,19 +41,22 @@ import scipy.sparse as sp
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from nltk.translate.meteor_score import meteor_score
 from rouge_score import rouge_scorer
-from sklearn.linear_model import LogisticRegression
 from sklearn.cluster import MiniBatchKMeans
+from sklearn.ensemble import VotingClassifier
+from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import GridSearchCV
+from sklearn.naive_bayes import MultinomialNB
 
 warnings.filterwarnings("ignore")
 
-# ── Download required NLTK data once ─────────────────────────────────────────
-for _pkg in ("wordnet", "punkt", "punkt_tab", "omw-1.4"):
+
+for _pkg in ("wordnet", "punkt", "punkt_tab", "omw-1.4",
+             "averaged_perceptron_tagger", "averaged_perceptron_tagger_eng"):
     nltk.download(_pkg, quiet=True)
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-BASE_DIR      = "/content/drive/MyDrive/AI_Project_2026"
+
+BASE_DIR = "/content/drive/MyDrive/AI_Project_2026"
 if not os.path.isdir(BASE_DIR):
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -65,12 +67,12 @@ TRAIN_CSV        = os.path.join(PROCESSED_DIR, "train.csv")
 VAL_CSV          = os.path.join(PROCESSED_DIR, "val.csv")
 VECTORIZER_PKL   = os.path.join(MODELS_DIR, "tfidf_vectorizer.pkl")
 TRAIN_MATRIX_PKL = os.path.join(MODELS_DIR, "tfidf_train_matrix.pkl")
-VERIFIER_PKL     = os.path.join(MODELS_DIR, "verifier_model.pkl")
+ENSEMBLE_PKL     = os.path.join(MODELS_DIR, "verifier_ensemble_model.pkl")
 KMEANS_PKL       = os.path.join(MODELS_DIR, "kmeans_model.pkl")
 
-# K-Means hyper-parameters
-N_CLUSTERS   = 10
-RANDOM_STATE = 42
+N_CLUSTERS      = 10
+RANDOM_STATE    = 42
+BLANK           = "__________"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -78,59 +80,81 @@ RANDOM_STATE = 42
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _sentences(text: str) -> list[str]:
-    """Split text into sentences using NLTK's Punkt tokeniser."""
     return nltk.sent_tokenize(str(text))
 
 
+def _tokenize(text: str) -> list[str]:
+    return nltk.word_tokenize(text.lower())
+
+
 def _correct_option(row: pd.Series) -> str:
-    """Return the text of the correct answer for a given row."""
     mapping = {"A": "opa", "B": "opb", "C": "opc", "D": "opd"}
     col = mapping.get(str(row.get("answer", "A")).upper(), "opa")
     return str(row.get(col, ""))
 
 
+def _extract_key_noun_chunk(sentence: str) -> str:
+    tokens     = nltk.word_tokenize(sentence)
+    pos_tagged = nltk.pos_tag(tokens)
+    grammar    = r"NP: {<JJ>*<NN.*>+}"
+    parser     = nltk.RegexpParser(grammar)
+    tree       = parser.parse(pos_tagged)
+
+    chunks = [
+        " ".join(word for word, _ in subtree.leaves())
+        for subtree in tree.subtrees(filter=lambda t: t.label() == "NP")
+        if len(" ".join(word for word, _ in subtree.leaves())) >= 3
+    ]
+
+    return max(chunks, key=len) if chunks else ""
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. Question Extraction via Cosine Similarity
+# 1. Question Extraction — cosine similarity + fill-in-the-blank
 # ══════════════════════════════════════════════════════════════════════════════
 
 def extract_question(
     article: str,
     correct_answer: str,
     vectorizer,
-) -> str:
+) -> tuple[str, str]:
     """
-    Return the sentence from *article* that is most similar to
-    *correct_answer* in TF-IDF cosine-similarity space.
+    Return (question_stem, answer_chunk).
+
+    The best article sentence is selected by TF-IDF cosine similarity to
+    correct_answer.  The most prominent noun chunk in that sentence is
+    replaced with BLANK to form a fill-in-the-blank question.
     """
     sents = _sentences(article)
     if not sents:
-        return ""
+        return ("", "")
 
-    # Transform sentences + answer into sparse vectors
     corpus    = sents + [correct_answer]
-    tfidf_mat = vectorizer.transform(corpus)           # sparse (n+1, vocab)
+    tfidf_mat = vectorizer.transform(corpus)
 
-    sent_vecs  = tfidf_mat[:-1]                        # (n, vocab)
-    answer_vec = tfidf_mat[-1]                         # (1, vocab)
+    sent_vecs  = tfidf_mat[:-1]
+    answer_vec = tfidf_mat[-1]
 
-    sims = cosine_similarity(sent_vecs, answer_vec).flatten()
-    best_idx = int(np.argmax(sims))
-    return sents[best_idx]
+    sims          = cosine_similarity(sent_vecs, answer_vec).flatten()
+    best_sentence = sents[int(np.argmax(sims))]
+
+    key_chunk = _extract_key_noun_chunk(best_sentence)
+    if not key_chunk:
+        return (best_sentence + f" {BLANK}?", correct_answer)
+
+    question_stem = re.sub(
+        re.escape(key_chunk), BLANK, best_sentence, count=1, flags=re.IGNORECASE
+    )
+    return (question_stem, key_chunk)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. Verifier — Logistic Regression
+# 2. Verifier — Soft Voting Ensemble
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _build_verifier_dataset(
     df: pd.DataFrame, vectorizer
 ) -> tuple[sp.csr_matrix, np.ndarray]:
-    """
-    For each row create 4 (article+option, label) pairs:
-      label=1  if option matches the correct answer
-      label=0  otherwise
-    Returns (X_sparse, y).
-    """
     texts, labels = [], []
     option_cols   = ["opa", "opb", "opc", "opd"]
     answer_map    = {"A": "opa", "B": "opb", "C": "opc", "D": "opd"}
@@ -139,63 +163,73 @@ def _build_verifier_dataset(
         article = str(row.get("article", ""))
         correct = answer_map.get(str(row.get("answer", "A")).upper(), "opa")
         for col in option_cols:
-            option = str(row.get(col, ""))
-            texts.append(article + " " + option)
+            texts.append(article + " " + str(row.get(col, "")))
             labels.append(1 if col == correct else 0)
 
-    X = vectorizer.transform(texts)          # scipy sparse
-    y = np.array(labels, dtype=np.int8)
-    return X, y
+    return vectorizer.transform(texts), np.array(labels, dtype=np.int8)
 
 
-def train_verifier(
+def train_ensemble_verifier(
     train_df: pd.DataFrame,
-    train_matrix: sp.csr_matrix,
     vectorizer,
     force_retrain: bool = False,
-) -> LogisticRegression:
+) -> VotingClassifier:
     """
-    Train (or load from checkpoint) the Logistic Regression verifier.
+    Build and save the soft-voting ensemble.
+
+    Logistic Regression C is selected via 3-fold GridSearchCV (F1 scoring).
+    Multinomial Naive Bayes and SGDClassifier are added with default-sensible
+    hyperparameters.  All three vote using averaged class probabilities.
     """
     os.makedirs(MODELS_DIR, exist_ok=True)
 
-    if os.path.isfile(VERIFIER_PKL) and not force_retrain:
-        print(f"[✓] Verifier checkpoint found — loading: {VERIFIER_PKL}")
-        return joblib.load(VERIFIER_PKL)
+    if os.path.isfile(ENSEMBLE_PKL) and not force_retrain:
+        print(f"[✓] Ensemble checkpoint found — loading: {ENSEMBLE_PKL}")
+        return joblib.load(ENSEMBLE_PKL)
 
     print("[→] Building verifier training dataset …")
     X_train, y_train = _build_verifier_dataset(train_df, vectorizer)
     print(f"    Samples : {X_train.shape[0]:,}  |  Features : {X_train.shape[1]:,}")
     print(f"    Positive: {y_train.sum():,}  |  Negative: {(y_train == 0).sum():,}")
 
-    print("[→] Training Logistic Regression verifier …")
-    clf = LogisticRegression(
-        max_iter=1_000,
-        C=1.0,
-        solver="saga",          # handles sparse input efficiently
-        n_jobs=-1,
-        random_state=RANDOM_STATE,
+    print("[→] Running GridSearchCV for Logistic Regression C …")
+    gs = GridSearchCV(
+        LogisticRegression(max_iter=1_000, solver="saga",
+                           n_jobs=-1, random_state=RANDOM_STATE),
+        {"C": [0.01, 0.1, 1.0, 10.0]},
+        cv=3, scoring="f1", n_jobs=-1, verbose=0,
     )
-    clf.fit(X_train, y_train)
+    gs.fit(X_train, y_train)
+    best_lr = gs.best_estimator_
+    print(f"    Best C selected: {gs.best_params_['C']}")
 
-    joblib.dump(clf, VERIFIER_PKL)
-    print(f"[✓] Verifier saved → {VERIFIER_PKL}")
-    return clf
+    mnb = MultinomialNB(alpha=0.1)
+    sgd = SGDClassifier(loss="log_loss", max_iter=1_000,
+                        random_state=RANDOM_STATE, n_jobs=-1)
+
+    ensemble = VotingClassifier(
+        estimators=[("lr", best_lr), ("mnb", mnb), ("sgd", sgd)],
+        voting="soft",
+        n_jobs=-1,
+    )
+
+    print("[→] Fitting Soft Voting Ensemble …")
+    ensemble.fit(X_train, y_train)
+
+    joblib.dump(ensemble, ENSEMBLE_PKL)
+    print(f"[✓] Ensemble verifier saved → {ENSEMBLE_PKL}")
+    return ensemble
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. Clusterer — K-Means
+# 3. Clusterer — Mini-Batch K-Means
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _build_cluster_matrix(
-    df: pd.DataFrame, vectorizer
-) -> sp.csr_matrix:
-    """Vectorise (question + correct_answer) strings for clustering."""
-    texts = []
-    for _, row in df.iterrows():
-        question = str(row.get("question", ""))
-        answer   = _correct_option(row)
-        texts.append(question + " " + answer)
+def _build_cluster_matrix(df: pd.DataFrame, vectorizer) -> sp.csr_matrix:
+    texts = [
+        str(row.get("question", "")) + " " + _correct_option(row)
+        for _, row in df.iterrows()
+    ]
     return vectorizer.transform(texts)
 
 
@@ -204,9 +238,6 @@ def train_kmeans(
     vectorizer,
     force_retrain: bool = False,
 ) -> MiniBatchKMeans:
-    """
-    Cluster question-answer pairs with Mini-Batch K-Means (sparse-compatible).
-    """
     os.makedirs(MODELS_DIR, exist_ok=True)
 
     if os.path.isfile(KMEANS_PKL) and not force_retrain:
@@ -218,12 +249,8 @@ def train_kmeans(
     print(f"    Matrix shape: {X_cluster.shape}")
 
     print(f"[→] Fitting Mini-Batch K-Means (k={N_CLUSTERS}) …")
-    km = MiniBatchKMeans(
-        n_clusters=N_CLUSTERS,
-        random_state=RANDOM_STATE,
-        batch_size=1_024,
-        n_init=10,
-    )
+    km = MiniBatchKMeans(n_clusters=N_CLUSTERS, random_state=RANDOM_STATE,
+                         batch_size=1_024, n_init=10)
     km.fit(X_cluster)
     print(f"    Inertia: {km.inertia_:.2f}")
 
@@ -238,7 +265,6 @@ def predict_cluster(
     vectorizer,
     kmeans: MiniBatchKMeans,
 ) -> int:
-    """Return the cluster ID for a given question-answer pair."""
     vec = vectorizer.transform([question + " " + answer])
     return int(kmeans.predict(vec)[0])
 
@@ -247,25 +273,14 @@ def predict_cluster(
 # 4. Evaluation — BLEU, ROUGE, METEOR
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _tokenize(text: str) -> list[str]:
-    return nltk.word_tokenize(text.lower())
-
-
 def evaluate_extraction(val_df: pd.DataFrame, vectorizer) -> dict:
-    """
-    For every row in val_df:
-      - extract the best sentence using cosine similarity
-      - compare it to the gold-standard question field
-    Aggregate BLEU, ROUGE-1/2/L, and METEOR; print and return scores.
-    """
     smoother = SmoothingFunction().method1
     rscorer  = rouge_scorer.RougeScorer(
         ["rouge1", "rouge2", "rougeL"], use_stemmer=True
     )
 
-    bleu_scores   = []
-    rouge1_scores, rouge2_scores, rougeL_scores = [], [], []
-    meteor_scores = []
+    bleu_scores, rouge1_scores, rouge2_scores = [], [], []
+    rougeL_scores, meteor_scores = [], []
 
     print(f"\n[→] Evaluating question extraction on {len(val_df):,} val examples …")
 
@@ -277,21 +292,16 @@ def evaluate_extraction(val_df: pd.DataFrame, vectorizer) -> dict:
         if not article.strip() or not gold_q.strip():
             continue
 
-        extracted = extract_question(article, answer, vectorizer)
+        question_stem, _ = extract_question(article, answer, vectorizer)
+        ref = [_tokenize(gold_q)]
+        hyp = _tokenize(question_stem)
 
-        ref  = [_tokenize(gold_q)]
-        hyp  = _tokenize(extracted)
-
-        # BLEU
         bleu_scores.append(sentence_bleu(ref, hyp, smoothing_function=smoother))
 
-        # ROUGE
-        r = rscorer.score(gold_q, extracted)
+        r = rscorer.score(gold_q, question_stem)
         rouge1_scores.append(r["rouge1"].fmeasure)
         rouge2_scores.append(r["rouge2"].fmeasure)
         rougeL_scores.append(r["rougeL"].fmeasure)
-
-        # METEOR  (reference must be tokenised list)
         meteor_scores.append(meteor_score(ref, hyp))
 
     results = {
@@ -317,7 +327,6 @@ def evaluate_extraction(val_df: pd.DataFrame, vectorizer) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    # ── Load artefacts ────────────────────────────────────────────────────────
     if not os.path.isfile(VECTORIZER_PKL):
         raise FileNotFoundError(
             "TF-IDF vectorizer not found. Run preprocessing.py first."
@@ -332,27 +341,11 @@ def main():
         raise FileNotFoundError("val.csv not found. Run data_splitter.py first.")
     val_df = pd.read_csv(VAL_CSV)
 
-    # ── Train / Load models ───────────────────────────────────────────────────
-    train_matrix = (
-        joblib.load(TRAIN_MATRIX_PKL)
-        if os.path.isfile(TRAIN_MATRIX_PKL)
-        else vectorizer.transform(
-            train_df.apply(
-                lambda r: str(r.get("article", ""))
-                + " "
-                + " ".join(str(r.get(c, "")) for c in ["opa", "opb", "opc", "opd"]),
-                axis=1,
-            ).tolist()
-        )
-    )
+    train_ensemble_verifier(train_df, vectorizer)
+    train_kmeans(train_df, vectorizer)
 
-    verifier = train_verifier(train_df, train_matrix, vectorizer)
-    kmeans   = train_kmeans(train_df, vectorizer)
-
-    # ── Evaluate question extraction ──────────────────────────────────────────
     scores = evaluate_extraction(val_df, vectorizer)
 
-    # ── Persist evaluation scores for UI ─────────────────────────────────────
     scores_path = os.path.join(MODELS_DIR, "model_a_scores.pkl")
     joblib.dump(scores, scores_path)
     print(f"[✓] Scores saved → {scores_path}")
