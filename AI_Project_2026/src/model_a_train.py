@@ -44,6 +44,7 @@ from rouge_score import rouge_scorer
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.ensemble import VotingClassifier
 from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import MultinomialNB
@@ -194,8 +195,13 @@ def train_ensemble_verifier(
 
     print("[→] Running GridSearchCV for Logistic Regression C …")
     gs = GridSearchCV(
-        LogisticRegression(max_iter=1_000, solver="saga",
-                           n_jobs=-1, random_state=RANDOM_STATE),
+        LogisticRegression(
+            max_iter=1_000,
+            solver="saga",
+            class_weight="balanced",
+            n_jobs=-1,
+            random_state=RANDOM_STATE,
+        ),
         {"C": [0.01, 0.1, 1.0, 10.0]},
         cv=3, scoring="f1", n_jobs=-1, verbose=0,
     )
@@ -203,9 +209,17 @@ def train_ensemble_verifier(
     best_lr = gs.best_estimator_
     print(f"    Best C selected: {gs.best_params_['C']}")
 
+
     mnb = MultinomialNB(alpha=0.1)
-    sgd = SGDClassifier(loss="log_loss", max_iter=1_000,
-                        random_state=RANDOM_STATE, n_jobs=-1)
+
+
+    sgd = SGDClassifier(
+        loss="log_loss",
+        max_iter=1_000,
+        class_weight="balanced",
+        random_state=RANDOM_STATE,
+        n_jobs=-1,
+    )
 
     ensemble = VotingClassifier(
         estimators=[("lr", best_lr), ("mnb", mnb), ("sgd", sgd)],
@@ -219,6 +233,43 @@ def train_ensemble_verifier(
     joblib.dump(ensemble, ENSEMBLE_PKL)
     print(f"[✓] Ensemble verifier saved → {ENSEMBLE_PKL}")
     return ensemble
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2b. Verifier Evaluation — Classification Report & Confusion Matrix
+# ══════════════════════════════════════════════════════════════════════════════
+
+def evaluate_verifier(
+    val_df: pd.DataFrame,
+    vectorizer,
+    ensemble: VotingClassifier,
+) -> None:
+    """
+    Evaluate the trained ensemble on the validation split.
+
+    Builds the same (article + option, label) dataset from val_df, runs
+    inference, then prints a full classification_report and a
+    confusion_matrix so class-imbalance effects are clearly visible.
+    """
+    print("\n[→] Building verifier validation dataset …")
+    X_val, y_val = _build_verifier_dataset(val_df, vectorizer)
+    print(f"    Val samples : {X_val.shape[0]:,}")
+
+
+    y_pred = ensemble.predict(X_val)
+
+
+    print("\n" + "═" * 60)
+    print("  Verifier Ensemble — Classification Report (val split)")
+    print("═" * 60)
+    print(classification_report(y_val, y_pred, target_names=["Incorrect", "Correct"]))
+
+
+    cm = confusion_matrix(y_val, y_pred)
+    print("  Confusion Matrix")
+    print("  (rows = Actual, cols = Predicted  |  0=Incorrect, 1=Correct)")
+    print("\n  " + str(cm).replace("\n", "\n  "))
+    print("═" * 60 + "\n")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -341,7 +392,10 @@ def main():
         raise FileNotFoundError("val.csv not found. Run data_splitter.py first.")
     val_df = pd.read_csv(VAL_CSV)
 
-    train_ensemble_verifier(train_df, vectorizer)
+    ensemble = train_ensemble_verifier(train_df, vectorizer)
+    evaluate_verifier(val_df, vectorizer, ensemble)
+
+
     train_kmeans(train_df, vectorizer)
 
     scores = evaluate_extraction(val_df, vectorizer)
