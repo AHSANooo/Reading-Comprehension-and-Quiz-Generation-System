@@ -2,3 +2,12 @@ AI Project/dataset/
 AI_Project_2026/dataset/
 venv/
 /venv/
+# Datasets
+AI_Project_2026/dataset/
+AI_Project_2026/processed/
+
+# ML artifacts
+*.pkl
+*.joblib
+*.npy
+*.npz
