@@ -33,7 +33,7 @@ _SRC  = os.path.join(os.path.dirname(_HERE), "src")
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
-from model_a_train import extract_question, predict_cluster
+from model_a_train import extract_question, predict_cluster, verify_option
 from model_b_train import generate_hints, generate_distractors
 
 
@@ -199,12 +199,19 @@ def _build_quiz_items(
             i for i, (orig_idx, _) in enumerate(indexed_options) if orig_idx == 0
         )
 
+        correct_label_idx = 0
+
         if ensemble is not None:
-            vecs        = vectorizer.transform(
-                [article + " " + opt for opt in shuffled_options]
-            )
-            probs       = ensemble.predict_proba(vecs)[:, 1]
-            correct_idx = int(np.argmax(probs))
+            scored = [
+                verify_option(
+                    question_stem, opt, article, vectorizer, ensemble
+                )
+                for opt in shuffled_options
+            ]
+            confidences = [conf for _, conf in scored]
+            correct_label_idx = int(np.argmax(confidences))
+
+        shuffled_correct_idx = correct_label_idx
 
         raw_hints = generate_hints(question_stem, article, vectorizer)
         masked_hints = [
@@ -221,7 +228,7 @@ def _build_quiz_items(
             "question_stem" : question_stem,
             "answer_chunk"  : answer_chunk,
             "options"       : shuffled_options,
-            "correct_idx"   : correct_idx,
+            "correct_idx"   : shuffled_correct_idx,
             "hints"         : masked_hints,
             "cluster_id"    : cluster_id,
         })
@@ -575,22 +582,47 @@ if page == "📝 Quiz Studio":
             already_answered = current_idx in given
 
             if already_answered:
-                chosen_radio = radio_options[given[current_idx]]
+                chosen_idx = given[current_idx]
+
                 st.radio(
                     "Your answer",
                     radio_options,
-                    index=given[current_idx],
+                    index=chosen_idx,
                     key=f"radio_{current_idx}_done",
                     disabled=True,
                     label_visibility="collapsed",
                 )
-                if given[current_idx] == item["correct_idx"]:
-                    st.success("✅ Correct!")
+
+                chosen_option_text = item["options"][chosen_idx]
+
+                verifier_label, verifier_confidence = (
+                    verify_option(
+                        item["question_stem"],
+                        chosen_option_text,
+                        article_input,
+                        vectorizer,
+                        ensemble,
+                    )
+                    if ensemble is not None
+                    else (int(chosen_idx == item["correct_idx"]), None)
+                )
+
+                is_correct = (chosen_idx == item["correct_idx"])
+
+                confidence_badge = (
+                    f"  ·  Verifier confidence: **{verifier_confidence * 100:.1f}%**"
+                    if verifier_confidence is not None
+                    else ""
+                )
+
+                if is_correct:
+                    st.success(f"✅ Correct!{confidence_badge}")
                 else:
+                    correct_txt = item['options'][item['correct_idx']]
                     st.error(
                         f"❌ Incorrect. Correct answer: "
-                        f"**{OPTION_LABELS[item['correct_idx']]}. "
-                        f"{item['options'][item['correct_idx']]}**"
+                        f"**{OPTION_LABELS[item['correct_idx']]}. {correct_txt}**"
+                        f"{confidence_badge}"
                     )
 
             else:

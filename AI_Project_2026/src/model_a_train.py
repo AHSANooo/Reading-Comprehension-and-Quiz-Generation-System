@@ -80,6 +80,14 @@ RANDOM_STATE    = 42
 BLANK           = "__________"
 
 
+GENERIC_WORD_BLACKLIST = {
+    "something", "anything", "nothing", "everything", "things",
+    "someone",   "anyone",   "it",      "this",       "that",
+    "they",      "he",       "she",     "one",        "ones",
+    "way",       "part",     "kind",    "type",       "lot",
+}
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Helpers
 # ══════════════════════════════════════════════════════════════════════════════
@@ -98,6 +106,34 @@ def _correct_option(row: pd.Series) -> str:
     return str(row.get(col, ""))
 
 
+def _chunk_is_valid(chunk: str, pos_tagged_leaves: list) -> bool:
+    if len(chunk) < 4:
+        return False
+
+    chunk_words = chunk.lower().split()
+
+    if all(w in GENERIC_WORD_BLACKLIST for w in chunk_words):
+        return False
+
+    if chunk == chunk.lower():
+        return False
+
+    return True
+
+
+def _chunk_priority(chunk: str, pos_tagged_leaves: list) -> tuple:
+    chunk_words_lower = set(chunk.lower().split())
+
+    has_proper_noun = any(
+        word.lower() in chunk_words_lower and tag == "NNP"
+        for word, tag in pos_tagged_leaves
+    )
+
+    word_count = len(chunk.split())
+
+    return (int(has_proper_noun), word_count, len(chunk))
+
+
 def _extract_key_noun_chunk(sentence: str) -> str:
     tokens     = nltk.word_tokenize(sentence)
     pos_tagged = nltk.pos_tag(tokens)
@@ -105,13 +141,22 @@ def _extract_key_noun_chunk(sentence: str) -> str:
     parser     = nltk.RegexpParser(grammar)
     tree       = parser.parse(pos_tagged)
 
-    chunks = [
+    raw_chunks = [
         " ".join(word for word, _ in subtree.leaves())
         for subtree in tree.subtrees(filter=lambda t: t.label() == "NP")
-        if len(" ".join(word for word, _ in subtree.leaves())) >= 3
     ]
 
-    return max(chunks, key=len) if chunks else ""
+
+    valid_chunks = [
+        chunk for chunk in raw_chunks
+        if _chunk_is_valid(chunk, pos_tagged)
+    ]
+
+
+    if not valid_chunks:
+        return ""
+
+    return max(valid_chunks, key=lambda c: _chunk_priority(c, pos_tagged))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -237,6 +282,41 @@ def train_ensemble_verifier(
     joblib.dump(ensemble, ENSEMBLE_PKL)
     print(f"[✓] Ensemble verifier saved → {ENSEMBLE_PKL}")
     return ensemble
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2c. Verifier Inference — fill-blank-then-score
+# ══════════════════════════════════════════════════════════════════════════════
+
+def verify_option(
+    question_stem: str,
+    option_text: str,
+    article: str,
+    vectorizer,
+    ensemble: VotingClassifier,
+) -> tuple[int, float]:
+    """
+    Return (predicted_label, confidence_probability).
+
+    The blank in *question_stem* is first filled with *option_text* to produce
+    a complete sentence.  That filled sentence is concatenated with *article*
+    and vectorised.  This matches the representation seen during training and
+    eliminates the covariate-shift false-negative problem.
+    """
+    filled_sentence = question_stem.replace(BLANK, option_text, 1)
+
+
+    feature_text = article + " " + filled_sentence
+
+
+    vec   = vectorizer.transform([feature_text])
+    proba = ensemble.predict_proba(vec)[0]
+
+
+    predicted_label       = int(np.argmax(proba))
+    confidence_of_correct = float(proba[1])
+
+    return predicted_label, confidence_of_correct
 
 
 # ══════════════════════════════════════════════════════════════════════════════
