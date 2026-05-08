@@ -563,119 +563,133 @@ if page == "📝 Quiz Studio":
             current_idx = st.session_state.current_q_idx
             item        = quiz_items[current_idx]
 
-            st.markdown(
-                _progress_bar_html(current_idx + 1, total_qs),
-                unsafe_allow_html=True,
-            )
-
-            st.markdown(
-                _question_card_html(item["question_stem"], item["cluster_id"]),
-                unsafe_allow_html=True,
-            )
-
-            radio_options = [
-                f"{label}. {opt}"
-                for label, opt in zip(OPTION_LABELS, item["options"])
-            ]
-
-            already_answered = current_idx in given
-
-            if already_answered:
-                chosen_idx = given[current_idx]
-
-                st.radio(
-                    "Your answer",
-                    radio_options,
-                    index=chosen_idx,
-                    key=f"radio_{current_idx}_done",
-                    disabled=True,
-                    label_visibility="collapsed",
+            with st.container(border=True):
+                st.markdown(
+                    _progress_bar_html(current_idx + 1, total_qs),
+                    unsafe_allow_html=True,
                 )
 
-                chosen_option_text = item["options"][chosen_idx]
-
-                verifier_label, verifier_confidence = (
-                    verify_option(
-                        item["question_stem"],
-                        chosen_option_text,
-                        article_input,
-                        vectorizer,
-                        ensemble,
-                    )
-                    if ensemble is not None
-                    else (int(chosen_idx == item["correct_idx"]), None)
+                st.markdown(
+                    _question_card_html(item["question_stem"], item["cluster_id"]),
+                    unsafe_allow_html=True,
                 )
 
-                is_correct = (chosen_idx == item["correct_idx"])
+                radio_options = [
+                    f"{label}. {opt}"
+                    for label, opt in zip(OPTION_LABELS, item["options"])
+                ]
 
-                confidence_badge = (
-                    f"  ·  Verifier confidence: **{verifier_confidence * 100:.1f}%**"
-                    if verifier_confidence is not None
-                    else ""
-                )
+                already_answered = current_idx in given
 
-                if is_correct:
-                    st.success(f"✅ Correct!{confidence_badge}")
-                else:
-                    correct_txt = item['options'][item['correct_idx']]
-                    st.error(
-                        f"❌ Incorrect. Correct answer: "
-                        f"**{OPTION_LABELS[item['correct_idx']]}. {correct_txt}**"
-                        f"{confidence_badge}"
+                if already_answered:
+                    chosen_idx = given[current_idx]
+
+                    st.radio(
+                        "Your answer",
+                        radio_options,
+                        index=chosen_idx,
+                        key=f"radio_{current_idx}_done",
+                        disabled=True,
+                        label_visibility="collapsed",
                     )
 
-            else:
-                chosen_radio = st.radio(
-                    "Choose your answer",
-                    radio_options,
-                    index=None,
-                    key=f"radio_{current_idx}",
-                    label_visibility="collapsed",
-                )
+                    chosen_option_text = item["options"][chosen_idx]
 
-                if chosen_radio is not None:
-                    chosen_idx = radio_options.index(chosen_radio)
-                    st.session_state.answers_given[current_idx] = chosen_idx
-                    st.rerun()
+                    verifier_label, verifier_confidence = (
+                        verify_option(
+                            item["question_stem"],
+                            chosen_option_text,
+                            article_input,
+                            vectorizer,
+                            ensemble,
+                        )
+                        if ensemble is not None
+                        else (int(chosen_idx == item["correct_idx"]), None)
+                    )
 
+                    is_correct = (chosen_idx == item["correct_idx"])
 
-            if item["hints"]:
-                with st.expander("💡 Contextual Hints", expanded=False):
-                    for i, hint in enumerate(item["hints"], 1):
+                    if is_correct:
+                        st.success(f"✅ Correct!")
+                    else:
+                        correct_txt = item['options'][item['correct_idx']]
+                        st.error(
+                            f"❌ Incorrect. Correct answer: "
+                            f"**{OPTION_LABELS[item['correct_idx']]}. {correct_txt}**"
+                        )
+                    
+                    if verifier_confidence is not None:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.markdown("##### 🤖 ML Verifier Evaluation")
+                        conf_pct = verifier_confidence * 100
+                        color = "green" if conf_pct >= 70 else "orange" if conf_pct >= 40 else "red"
                         st.markdown(
                             f"""
-                            <div style="
-                                background:#0f2744; border:1px solid #1e3a5f;
-                                border-radius:10px; padding:12px 16px; margin:8px 0;
-                                font-size:14px; color:#cbd5e1; line-height:1.6;
-                            ">
-                                <span style="color:#38bdf8; font-weight:700;">
-                                    Hint {i}&nbsp;
-                                </span>
-                                {hint}
+                            <div style="border: 1px solid #334155; border-radius: 8px; padding: 16px; background-color: #0f172a;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                    <span style="font-size: 14px; color: #94a3b8;">Confidence Score</span>
+                                    <span style="font-size: 14px; font-weight: bold; color: {color};">{conf_pct:.1f}%</span>
+                                </div>
+                                <div style="width: 100%; background-color: #1e293b; border-radius: 4px; height: 8px;">
+                                    <div style="width: {conf_pct}%; background-color: {color}; height: 100%; border-radius: 4px;"></div>
+                                </div>
                             </div>
                             """,
                             unsafe_allow_html=True,
                         )
 
+                else:
+                    chosen_radio = st.radio(
+                        "Choose your answer",
+                        radio_options,
+                        index=None,
+                        key=f"radio_{current_idx}",
+                        label_visibility="collapsed",
+                    )
 
-            nav_left, nav_right = st.columns([1, 1])
-
-            with nav_left:
-                if current_idx > 0:
-                    if st.button("← Previous", use_container_width=True):
-                        st.session_state.current_q_idx -= 1
+                    if chosen_radio is not None:
+                        chosen_idx = radio_options.index(chosen_radio)
+                        st.session_state.answers_given[current_idx] = chosen_idx
                         st.rerun()
 
-            with nav_right:
-                if already_answered:
-                    if current_idx < total_qs - 1:
-                        if st.button("Next →", use_container_width=True):
-                            st.session_state.current_q_idx += 1
+
+                if item["hints"]:
+                    with st.expander("💡 Contextual Hints", expanded=False):
+                        for i, hint in enumerate(item["hints"], 1):
+                            st.markdown(
+                                f"""
+                                <div style="
+                                    background:#0f2744; border:1px solid #1e3a5f;
+                                    border-radius:10px; padding:12px 16px; margin:8px 0;
+                                    font-size:14px; color:#cbd5e1; line-height:1.6;
+                                ">
+                                    <span style="color:#38bdf8; font-weight:700;">
+                                        Hint {i}&nbsp;
+                                    </span>
+                                    {hint}
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+
+
+                nav_left, nav_right = st.columns([1, 1])
+
+                with nav_left:
+                    if current_idx > 0:
+                        if st.button("← Previous", use_container_width=True):
+                            st.session_state.current_q_idx -= 1
                             st.rerun()
-                    else:
-                        if st.button("🏁 Finish Quiz", use_container_width=True):
-                            st.rerun()
+
+                with nav_right:
+                    if already_answered:
+                        if current_idx < total_qs - 1:
+                            if st.button("Next →", use_container_width=True):
+                                st.session_state.current_q_idx += 1
+                                st.rerun()
+                        else:
+                            if st.button("🏁 Finish Quiz", use_container_width=True):
+                                st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
