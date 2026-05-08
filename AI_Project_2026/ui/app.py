@@ -28,8 +28,16 @@ import numpy as np
 import streamlit as st
 from gensim.models import Word2Vec
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_SRC  = os.path.join(os.path.dirname(_HERE), "src")
+BASE_DIR = "/content/drive/MyDrive/AI_Project_2026"
+if not os.path.isdir(BASE_DIR):
+    # Hardcoded local path to prevent stale terminal/Trash issues
+    LOCAL_BASE = "/home/ahsan/Documents/Uni work/Sem 6/AI Lab/Project/AI_Project_2026"
+    if os.path.isdir(LOCAL_BASE):
+        BASE_DIR = LOCAL_BASE
+    else:
+        BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+_SRC = os.path.join(BASE_DIR, "src")
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
@@ -42,15 +50,6 @@ for _pkg in ("wordnet", "punkt", "punkt_tab", "averaged_perceptron_tagger",
              "maxent_ne_chunker_tab", "words", "omw-1.4"):
     nltk.download(_pkg, quiet=True)
 
-
-BASE_DIR = "/content/drive/MyDrive/AI_Project_2026"
-if not os.path.isdir(BASE_DIR):
-    # Hardcoded local path to prevent stale terminal/Trash issues
-    LOCAL_BASE = "/home/ahsan/Documents/Uni work/Sem 6/AI Lab/Project/AI_Project_2026"
-    if os.path.isdir(LOCAL_BASE):
-        BASE_DIR = LOCAL_BASE
-    else:
-        BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
