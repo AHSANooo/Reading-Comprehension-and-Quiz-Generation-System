@@ -137,7 +137,7 @@ def _chunk_priority(chunk: str, pos_tagged_leaves: list) -> tuple:
 def _extract_key_noun_chunk(sentence: str) -> str:
     tokens     = nltk.word_tokenize(sentence)
     pos_tagged = nltk.pos_tag(tokens)
-    grammar    = r"NP: {<NN.*>{1,2}}"
+    grammar    = r"NP: {<NNP>|<NN>}"
     parser     = nltk.RegexpParser(grammar)
     tree       = parser.parse(pos_tagged)
 
@@ -145,7 +145,7 @@ def _extract_key_noun_chunk(sentence: str) -> str:
     for subtree in tree.subtrees(filter=lambda t: t.label() == "NP"):
         leaves = subtree.leaves()
         chunk_text = " ".join(word for word, _ in leaves)
-        if len(chunk_text.split()) <= 2:
+        if len(chunk_text.split()) == 1:
             raw_chunks.append(chunk_text)
 
     valid_chunks = [c for c in raw_chunks if _chunk_is_valid(c, pos_tagged)]
@@ -254,9 +254,6 @@ def train_ensemble_verifier(
     print(f"    Best C selected: {gs.best_params_['C']}")
 
 
-    mnb = MultinomialNB(alpha=0.1)
-
-
     sgd = SGDClassifier(
         loss="log_loss",
         max_iter=1_000,
@@ -266,7 +263,7 @@ def train_ensemble_verifier(
     )
 
     ensemble = VotingClassifier(
-        estimators=[("lr", best_lr), ("mnb", mnb), ("sgd", sgd)],
+        estimators=[("lr", best_lr), ("sgd", sgd)],
         voting="soft",
         n_jobs=-1,
     )

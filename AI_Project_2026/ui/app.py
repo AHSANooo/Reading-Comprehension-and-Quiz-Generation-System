@@ -280,13 +280,6 @@ def _progress_bar_html(current: int, total: int) -> str:
 
 
 def _question_card_html(stem: str, cluster_id) -> str:
-    cluster_badge = ""
-    if cluster_id is not None:
-        cluster_badge = (
-            f"<span style='background:#312e81; color:#a5b4fc; padding:3px 10px;"
-            f"border-radius:20px; font-size:11px; font-weight:600; margin-bottom:10px;"
-            f"display:inline-block;'>Cluster #{cluster_id}</span><br>"
-        )
     return f"""
     <div style="
         background: linear-gradient(135deg,#1e1b4b,#0f172a);
@@ -295,13 +288,10 @@ def _question_card_html(stem: str, cluster_id) -> str:
         padding: 20px 24px;
         margin: 12px 0 20px;
     ">
-        {cluster_badge}
-        <div style="font-size:12px; color:#818cf8; font-weight:600;
-                    letter-spacing:1px; text-transform:uppercase;">
+        <div style="font-size:12px; color:#818cf8; font-weight:600; text-transform:uppercase;">
             Fact Verification
         </div>
-        <div style="font-size:19px; font-weight:600; color:#e2e8f0; margin-top:10px;
-                    line-height:1.6;">
+        <div style="font-size:19px; font-weight:600; color:#e2e8f0; margin-top:10px;">
             Identify the factually correct statement based on the article:
         </div>
     </div>

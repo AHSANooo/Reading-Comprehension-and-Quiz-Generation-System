@@ -268,12 +268,20 @@ def evaluate_distractors(
     for _, row in val_df.iterrows():
         article = str(row.get("article", ""))
         correct = _correct_option(row)
-        wrongs  = _wrong_options(row)
 
-        question_stem = str(row.get("question", ""))
-        
-        if not article.strip() or "__________" not in question_stem:
+        if not article.strip() or not correct.strip():
             continue
+
+        target_sent = ""
+        for s in _sentences(article):
+            if correct.lower() in s.lower():
+                target_sent = s
+                break
+
+        if not target_sent:
+            continue
+
+        question_stem = re.sub(re.escape(correct), "__________", target_sent, count=1, flags=re.IGNORECASE)
 
         generated = generate_distractors(article, correct, w2v_model)
         if not generated:
