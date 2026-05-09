@@ -141,17 +141,25 @@ def _extract_key_noun_chunk(sentence: str) -> str:
     parser     = nltk.RegexpParser(grammar)
     tree       = parser.parse(pos_tagged)
 
-    raw_chunks = [
-        " ".join(word for word, _ in subtree.leaves())
-        for subtree in tree.subtrees(filter=lambda t: t.label() == "NP")
-    ]
-
+    raw_chunks = []
+    for subtree in tree.subtrees(filter=lambda t: t.label() == "NP"):
+        leaves = subtree.leaves()
+        
+        while leaves and leaves[0][1].startswith("JJ"):
+            leaves.pop(0)
+            
+        if not leaves:
+            continue
+            
+        chunk_text = " ".join(word for word, _ in leaves)
+        
+        if len(chunk_text.split()) <= 3:
+            raw_chunks.append(chunk_text)
 
     valid_chunks = [
         chunk for chunk in raw_chunks
         if _chunk_is_valid(chunk, pos_tagged)
     ]
-
 
     if not valid_chunks:
         return ""

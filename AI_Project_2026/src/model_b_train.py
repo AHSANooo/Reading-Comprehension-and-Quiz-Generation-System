@@ -270,7 +270,9 @@ def evaluate_distractors(
         correct = _correct_option(row)
         wrongs  = _wrong_options(row)
 
-        if not article.strip():
+        question_stem = str(row.get("question", ""))
+        
+        if not article.strip() or "__________" not in question_stem:
             continue
 
         generated = generate_distractors(article, correct, w2v_model)
@@ -278,7 +280,8 @@ def evaluate_distractors(
             continue
 
         for gen_dist in generated:
-            hyp = _tokenize(gen_dist)
+            hyp_sentence = question_stem.replace("__________", gen_dist)
+            hyp = _tokenize(hyp_sentence)
             if not hyp:
                 continue
 
@@ -286,9 +289,12 @@ def evaluate_distractors(
             for gold in wrongs:
                 if not gold.strip():
                     continue
-                ref = [_tokenize(gold)]
+                    
+                ref_sentence = question_stem.replace("__________", gold)
+                ref = [_tokenize(ref_sentence)]
+                
                 b   = sentence_bleu(ref, hyp, smoothing_function=smoother)
-                r   = rscorer.score(gold, gen_dist)
+                r   = rscorer.score(ref_sentence, hyp_sentence)
                 m   = meteor_score(ref, hyp)
                 if b > best_bleu:
                     best_bleu = b
