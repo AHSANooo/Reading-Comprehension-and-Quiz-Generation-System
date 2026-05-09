@@ -186,10 +186,16 @@ def _build_quiz_items(
         else:
             distractors = []
 
-        options_pool = [(answer_chunk, True)]
-        for d in distractors[:3]:
-            options_pool.append((d, False))
-            
+        is_cap = answer_chunk and answer_chunk[0].isupper()
+        fmt_distractors = [d.title() if is_cap else d.lower() for d in distractors[:3]]
+
+        correct_sentence = question_stem.replace("__________", answer_chunk)
+        options_pool = [(correct_sentence, True)]
+
+        for d in fmt_distractors:
+            wrong_sentence = question_stem.replace("__________", d)
+            options_pool.append((wrong_sentence, False))
+
         while len(options_pool) < 4:
             options_pool.append(("(No distractor available)", False))
 
@@ -292,11 +298,11 @@ def _question_card_html(stem: str, cluster_id) -> str:
         {cluster_badge}
         <div style="font-size:12px; color:#818cf8; font-weight:600;
                     letter-spacing:1px; text-transform:uppercase;">
-            Fill in the blank
+            Fact Verification
         </div>
         <div style="font-size:19px; font-weight:600; color:#e2e8f0; margin-top:10px;
                     line-height:1.6;">
-            {stem}
+            Identify the factually correct statement based on the article:
         </div>
     </div>
     """
@@ -585,8 +591,8 @@ if page == "📝 Quiz Studio":
 
                     verifier_label, verifier_confidence = (
                         verify_option(
-                            item["question_stem"],
                             chosen_option_text,
+                            "",
                             article_input,
                             vectorizer,
                             ensemble,

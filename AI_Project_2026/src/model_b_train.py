@@ -279,35 +279,24 @@ def evaluate_distractors(
         if not generated:
             continue
 
+        ref_sentence = question_stem.replace("__________", correct)
+        ref = [_tokenize(ref_sentence)]
+
         for gen_dist in generated:
             hyp_sentence = question_stem.replace("__________", gen_dist)
             hyp = _tokenize(hyp_sentence)
             if not hyp:
                 continue
 
-            best_bleu = best_r1 = best_r2 = best_rL = best_met = 0.0
-            for gold in wrongs:
-                if not gold.strip():
-                    continue
-                    
-                ref_sentence = question_stem.replace("__________", gold)
-                ref = [_tokenize(ref_sentence)]
-                
-                b   = sentence_bleu(ref, hyp, smoothing_function=smoother)
-                r   = rscorer.score(ref_sentence, hyp_sentence)
-                m   = meteor_score(ref, hyp)
-                if b > best_bleu:
-                    best_bleu = b
-                    best_r1   = r["rouge1"].fmeasure
-                    best_r2   = r["rouge2"].fmeasure
-                    best_rL   = r["rougeL"].fmeasure
-                    best_met  = m
+            b = sentence_bleu(ref, hyp, smoothing_function=smoother)
+            r = rscorer.score(ref_sentence, hyp_sentence)
+            m = meteor_score(ref, hyp)
 
-            bleu_scores.append(best_bleu)
-            rouge1_scores.append(best_r1)
-            rouge2_scores.append(best_r2)
-            rougeL_scores.append(best_rL)
-            meteor_scores.append(best_met)
+            bleu_scores.append(b)
+            rouge1_scores.append(r["rouge1"].fmeasure)
+            rouge2_scores.append(r["rouge2"].fmeasure)
+            rougeL_scores.append(r["rougeL"].fmeasure)
+            meteor_scores.append(m)
 
     results = {
         "BLEU"   : float(np.mean(bleu_scores))   if bleu_scores else 0.0,
