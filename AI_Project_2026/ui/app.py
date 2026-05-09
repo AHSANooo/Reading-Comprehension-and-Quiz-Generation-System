@@ -182,55 +182,51 @@ def _build_quiz_items(
             continue
 
         if w2v_model is not None:
-            distractors = generate_distractors(article, answer_chunk, w2v_model)
+            distractors = generate_distractors(article, answer_chunk, w2v_model, n=6)
         else:
             distractors = []
 
-        # Remove any distractor that matches the correct answer
         clean_distractors = []
         for d in distractors:
             if d.lower() != answer_chunk.lower() and d.lower() not in [c.lower() for c in clean_distractors]:
                 clean_distractors.append(d)
-        distractors = clean_distractors
 
         is_cap = answer_chunk and answer_chunk[0].isupper()
-        fmt_distractors = [d.title() if is_cap else d.lower() for d in distractors[:3]]
+        fmt_distractors = [d.title() if is_cap else d.lower() for d in clean_distractors[:3]]
 
         correct_sentence = question_stem.replace("__________", answer_chunk)
-        options_pool = [(correct_sentence, True)]
+        options_pool = [(correct_sentence, True, answer_chunk)]
 
         for d in fmt_distractors:
             wrong_sentence = question_stem.replace("__________", d)
-            options_pool.append((wrong_sentence, False))
+            options_pool.append((wrong_sentence, False, d))
 
         while len(options_pool) < 4:
-            options_pool.append(("(No distractor available)", False))
+            options_pool.append(("(No distractor available)", False, ""))
 
         random.shuffle(options_pool)
 
-        shuffled_options = [text for text, _ in options_pool]
+        shuffled_options = [text for text, _, _ in options_pool]
+        shuffled_words = [word for _, _, word in options_pool]
         shuffled_correct_idx = next(
-            i for i, (_, is_true) in enumerate(options_pool) if is_true
+            i for i, (_, is_true, _) in enumerate(options_pool) if is_true
         )
 
         raw_hints = generate_hints(question_stem, article, vectorizer)
-        masked_hints = [
-            _mask_answer_in_hint(h, answer_chunk) for h in raw_hints
-        ]
+        masked_hints = [_mask_answer_in_hint(h, answer_chunk) for h in raw_hints]
 
         cluster_id = None
         if kmeans is not None:
-            cluster_id = predict_cluster(
-                question_stem, answer_chunk, vectorizer, kmeans
-            )
+            cluster_id = predict_cluster(question_stem, answer_chunk, vectorizer, kmeans)
 
         quiz_items.append({
-            "question_stem" : question_stem,
-            "answer_chunk"  : answer_chunk,
-            "options"       : shuffled_options,
-            "correct_idx"   : shuffled_correct_idx,
-            "hints"         : masked_hints,
-            "cluster_id"    : cluster_id,
+            "question_stem": question_stem,
+            "answer_chunk": answer_chunk,
+            "options": shuffled_options,
+            "option_words": shuffled_words,
+            "correct_idx": shuffled_correct_idx,
+            "hints": masked_hints,
+            "cluster_id": cluster_id,
         })
 
     return quiz_items
@@ -585,10 +581,11 @@ if page == "📝 Quiz Studio":
                     )
 
                     chosen_option_text = item["options"][chosen_idx]
+                    chosen_word = item["option_words"][chosen_idx]
 
                     verifier_label, verifier_confidence = (
                         verify_option(
-                            chosen_option_text,
+                            chosen_word,
                             "",
                             article_input,
                             vectorizer,
