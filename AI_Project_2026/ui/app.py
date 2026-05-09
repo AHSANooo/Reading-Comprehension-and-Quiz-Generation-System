@@ -186,6 +186,13 @@ def _build_quiz_items(
         else:
             distractors = []
 
+        # Remove any distractor that matches the correct answer
+        clean_distractors = []
+        for d in distractors:
+            if d.lower() != answer_chunk.lower() and d.lower() not in [c.lower() for c in clean_distractors]:
+                clean_distractors.append(d)
+        distractors = clean_distractors
+
         is_cap = answer_chunk and answer_chunk[0].isupper()
         fmt_distractors = [d.title() if is_cap else d.lower() for d in distractors[:3]]
 
