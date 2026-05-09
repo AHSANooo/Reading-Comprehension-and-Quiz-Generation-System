@@ -35,7 +35,7 @@ def _combine_text(row: pd.Series) -> str:
     """Concatenate article + options into a single string for the vectorizer."""
     options = " ".join(
         str(row.get(col, ""))
-        for col in ["opa", "opb", "opc", "opd"]
+        for col in ["A", "B", "C", "D"]
     )
     return f"{row.get('article', '')} {options}"
 

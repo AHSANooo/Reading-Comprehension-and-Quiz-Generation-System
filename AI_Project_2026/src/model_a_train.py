@@ -101,8 +101,8 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _correct_option(row: pd.Series) -> str:
-    mapping = {"A": "opa", "B": "opb", "C": "opc", "D": "opd"}
-    col = mapping.get(str(row.get("answer", "A")).upper(), "opa")
+    col = str(row.get("answer", "A")).upper()
+    if col not in ["A", "B", "C", "D"]: col = "A"
     return str(row.get(col, ""))
 
 
@@ -201,14 +201,14 @@ def _build_verifier_dataset(
     df: pd.DataFrame, vectorizer
 ) -> tuple[sp.csr_matrix, np.ndarray]:
     texts, labels = [], []
-    option_cols   = ["opa", "opb", "opc", "opd"]
-    answer_map    = {"A": "opa", "B": "opb", "C": "opc", "D": "opd"}
+    option_cols   = ["A", "B", "C", "D"]
+    answer_map    = {"A": "A", "B": "B", "C": "C", "D": "D"}
 
     for _, row in df.iterrows():
-        article = str(row.get("article", ""))
-        correct = answer_map.get(str(row.get("answer", "A")).upper(), "opa")
+        question = str(row.get("question", ""))
+        correct = answer_map.get(str(row.get("answer", "A")).upper(), "A")
         for col in option_cols:
-            texts.append(article + " " + str(row.get(col, "")))
+            texts.append(question + " " + str(row.get(col, "")))
             labels.append(1 if col == correct else 0)
 
     return vectorizer.transform(texts), np.array(labels, dtype=np.int8)
@@ -287,20 +287,15 @@ def verify_option(
     """
     Return (predicted_label, confidence_probability).
 
-    The blank in *question_stem* is first filled with *option_text* to produce
-    a complete sentence.  That filled sentence is concatenated with *article*
-    and vectorised.  This matches the representation seen during training and
-    eliminates the covariate-shift false-negative problem.
+    The model is evaluated using the question and the option.
+    This provides a much higher signal-to-noise ratio than prepending
+    the entire article, allowing the ensemble to properly distinguish
+    and output meaningful confidence scores.
     """
-    filled_sentence = question_stem.replace(BLANK, option_text, 1)
-
-
-    feature_text = article + " " + filled_sentence
-
+    feature_text = question_stem + " " + option_text
 
     vec   = vectorizer.transform([feature_text])
     proba = ensemble.predict_proba(vec)[0]
-
 
     predicted_label       = int(np.argmax(proba))
     confidence_of_correct = float(proba[1])

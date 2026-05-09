@@ -93,17 +93,17 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _correct_option(row: pd.Series) -> str:
-    mapping = {"A": "opa", "B": "opb", "C": "opc", "D": "opd"}
-    col = mapping.get(str(row.get("answer", "A")).upper(), "opa")
+    col = str(row.get("answer", "A")).upper()
+    if col not in ["A", "B", "C", "D"]: col = "A"
     return str(row.get(col, ""))
 
 
 def _wrong_options(row: pd.Series) -> list[str]:
-    mapping     = {"A": "opa", "B": "opb", "C": "opc", "D": "opd"}
-    correct_col = mapping.get(str(row.get("answer", "A")).upper(), "opa")
+    correct_col = str(row.get("answer", "A")).upper()
+    if correct_col not in ["A", "B", "C", "D"]: correct_col = "A"
     return [
         str(row.get(col, ""))
-        for col in ["opa", "opb", "opc", "opd"]
+        for col in ["A", "B", "C", "D"]
         if col != correct_col
     ]
 
@@ -128,7 +128,7 @@ def train_word2vec(
         return Word2Vec.load(W2V_MODEL_PATH)
 
     print("[→] Tokenising training corpus for Word2Vec …")
-    all_text_columns = ["article", "opa", "opb", "opc", "opd", "question"]
+    all_text_columns = ["article", "A", "B", "C", "D", "question"]
     sentences = []
     for _, row in train_df.iterrows():
         for col in all_text_columns:
@@ -219,13 +219,12 @@ def generate_distractors(
     if answer_vectors:
         mean_vector = np.mean(answer_vectors, axis=0)
         raw_neighbours = vocab.similar_by_vector(mean_vector, topn=W2V_TOP_NEIGHBOURS)
-        
+
         for word, _ in raw_neighbours:
             if len(distractors) >= n:
                 break
-            if word not in passage_tokens and len(word) >= 3:
-                if re.match(r"^[a-zA-Z\s]+$", word):
-                    distractors.append(word)
+            if len(word) >= MIN_CANDIDATE_LEN and re.match(r"^[a-zA-Z]+$", word):
+                distractors.append(word)
 
     if len(distractors) < n:
         try:
@@ -234,15 +233,14 @@ def generate_distractors(
             nltk.download("words", quiet=True)
             nltk_words = nltk.corpus.words.words()
 
-        valid_fallback = [
-            w for w in nltk_words 
-            if len(w) >= 3 and w.lower() not in passage_tokens and re.match(r"^[a-zA-Z\s]+$", w)
+        needed = n - len(distractors)
+        pool = [
+            w for w in nltk_words
+            if len(w) >= MIN_CANDIDATE_LEN and re.match(r"^[a-zA-Z]+$", w)
+            and w not in distractors
         ]
-
-        while len(distractors) < n and valid_fallback:
-            fallback_word = random.choice(valid_fallback)
-            if fallback_word not in distractors:
-                distractors.append(fallback_word)
+        if pool:
+            distractors += random.sample(pool, min(needed, len(pool)))
 
     return distractors
 
@@ -319,16 +317,6 @@ def evaluate_distractors(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    if os.path.isfile(SCORES_PKL):
-        print(f"[✓] Evaluation checkpoint found — loading: {SCORES_PKL}")
-        scores = joblib.load(SCORES_PKL)
-        print("\n" + "═" * 50)
-        print("  Model B — Distractor Generation Evaluation")
-        print("═" * 50)
-        for metric, score in scores.items():
-            print(f"  {metric:<10} : {score:.4f}")
-        print("═" * 50)
-        return
 
     if not os.path.isfile(TRAIN_CSV):
         raise FileNotFoundError("train.csv not found. Run data_splitter.py first.")
