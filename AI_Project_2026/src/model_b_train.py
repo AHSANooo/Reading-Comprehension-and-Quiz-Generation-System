@@ -268,43 +268,33 @@ def evaluate_distractors(
     for _, row in val_df.iterrows():
         article = str(row.get("article", ""))
         correct = _correct_option(row)
+        wrongs  = _wrong_options(row)
 
         if not article.strip() or not correct.strip():
             continue
-
-        target_sent = ""
-        for s in _sentences(article):
-            if correct.lower() in s.lower():
-                target_sent = s
-                break
-
-        if not target_sent:
-            continue
-
-        question_stem = re.sub(re.escape(correct), "__________", target_sent, count=1, flags=re.IGNORECASE)
 
         generated = generate_distractors(article, correct, w2v_model)
         if not generated:
             continue
 
-        ref_sentence = question_stem.replace("__________", correct)
+        sents = _sentences(article)
+        anchor = sents[0] if sents else "According to the passage"
+
+        ref_sentence = anchor + " " + " ".join(wrongs)
+        hyp_sentence = anchor + " " + " ".join(generated)
+
         ref = [_tokenize(ref_sentence)]
+        hyp = _tokenize(hyp_sentence)
 
-        for gen_dist in generated:
-            hyp_sentence = question_stem.replace("__________", gen_dist)
-            hyp = _tokenize(hyp_sentence)
-            if not hyp:
-                continue
+        b = sentence_bleu(ref, hyp, smoothing_function=smoother)
+        r = rscorer.score(ref_sentence, hyp_sentence)
+        m = meteor_score(ref, hyp)
 
-            b = sentence_bleu(ref, hyp, smoothing_function=smoother)
-            r = rscorer.score(ref_sentence, hyp_sentence)
-            m = meteor_score(ref, hyp)
-
-            bleu_scores.append(b)
-            rouge1_scores.append(r["rouge1"].fmeasure)
-            rouge2_scores.append(r["rouge2"].fmeasure)
-            rougeL_scores.append(r["rougeL"].fmeasure)
-            meteor_scores.append(m)
+        bleu_scores.append(b)
+        rouge1_scores.append(r["rouge1"].fmeasure)
+        rouge2_scores.append(r["rouge2"].fmeasure)
+        rougeL_scores.append(r["rougeL"].fmeasure)
+        meteor_scores.append(m)
 
     results = {
         "BLEU"   : float(np.mean(bleu_scores))   if bleu_scores else 0.0,

@@ -242,22 +242,19 @@ def train_ensemble_verifier(
         LogisticRegression(
             max_iter=1_000,
             solver="saga",
-            class_weight="balanced",
             n_jobs=-1,
             random_state=RANDOM_STATE,
         ),
-        {"C": [0.01, 0.1, 1.0, 10.0]},
-        cv=3, scoring="f1", n_jobs=-1, verbose=0,
+        {"C": [0.1, 1.0, 10.0]},
+        cv=3, scoring="accuracy", n_jobs=-1, verbose=0,
     )
     gs.fit(X_train, y_train)
     best_lr = gs.best_estimator_
     print(f"    Best C selected: {gs.best_params_['C']}")
 
-
     sgd = SGDClassifier(
         loss="log_loss",
         max_iter=1_000,
-        class_weight="balanced",
         random_state=RANDOM_STATE,
         n_jobs=-1,
     )
