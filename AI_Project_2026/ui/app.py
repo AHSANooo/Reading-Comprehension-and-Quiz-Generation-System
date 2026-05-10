@@ -59,6 +59,8 @@ KMEANS_PKL      = os.path.join(MODELS_DIR, "kmeans_model.pkl")
 W2V_MODEL_PATH  = os.path.join(MODELS_DIR, "word2vec.model")
 SCORES_A_PKL    = os.path.join(MODELS_DIR, "model_a_scores.pkl")
 SCORES_B_PKL    = os.path.join(MODELS_DIR, "model_b_scores.pkl")
+RANKER_PKL      = os.path.join(MODELS_DIR, "distractor_ranker.pkl")
+VAL_CSV         = os.path.join(BASE_DIR, "processed", "val.csv")
 
 OPTION_LABELS        = ["A", "B", "C", "D"]
 MIN_QUIZ_QUESTIONS   = 3
@@ -102,6 +104,13 @@ def load_word2vec():
     return Word2Vec.load(W2V_MODEL_PATH)
 
 
+@st.cache_resource(show_spinner="Loading distractor ranker …")
+def load_ranker():
+    if not os.path.isfile(RANKER_PKL):
+        return None
+    return joblib.load(RANKER_PKL)
+
+
 @st.cache_resource(show_spinner="Loading evaluation scores …")
 def load_scores():
     scores_a = joblib.load(SCORES_A_PKL) if os.path.isfile(SCORES_A_PKL) else {}
@@ -119,6 +128,8 @@ def _init_state():
         "quiz_items"     : [],
         "current_q_idx"  : 0,
         "answers_given"  : {},
+        "latency"        : 0.0,
+        "hints_unlocked" : 0,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -130,6 +141,7 @@ def _reset_quiz():
     st.session_state.quiz_items     = []
     st.session_state.current_q_idx  = 0
     st.session_state.answers_given  = {}
+    st.session_state.hints_unlocked = 0
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -152,6 +164,7 @@ def _build_quiz_items(
     w2v_model,
     ensemble,
     kmeans,
+    ranker,
 ) -> list[dict]:
     """
     Generate MIN_QUIZ_QUESTIONS to MAX_QUIZ_QUESTIONS distinct quiz items
@@ -182,7 +195,7 @@ def _build_quiz_items(
             continue
 
         if w2v_model is not None:
-            distractors = generate_distractors(article, answer_chunk, w2v_model, n=6)
+            distractors = generate_distractors(article, answer_chunk, w2v_model, ranker=ranker, n=6)
         else:
             distractors = []
 
@@ -439,6 +452,7 @@ with st.sidebar:
 vectorizer = load_vectorizer()
 ensemble   = load_ensemble()
 kmeans     = load_kmeans()
+ranker     = load_ranker()
 w2v_model  = load_word2vec()
 
 _init_state()
@@ -473,7 +487,17 @@ if page == "📝 Quiz Studio":
         key="article_input",
     )
 
-    col_gen, col_rst, _ = st.columns([2, 2, 8])
+    col_gen, col_rnd, col_rst, _ = st.columns([2, 2, 2, 6])
+
+    with col_rnd:
+        if st.button("🎲 Random Sample", use_container_width=True):
+            if os.path.isfile(VAL_CSV):
+                df_val = pd.read_csv(VAL_CSV)
+                random_row = df_val.sample(1).iloc[0]
+                st.session_state.article_input = random_row['article']
+                st.rerun()
+            else:
+                st.error("Validation dataset not found for samples.")
 
     with col_gen:
         generate_clicked = st.button("⚡ Generate Quiz", use_container_width=True)
@@ -489,9 +513,12 @@ if page == "📝 Quiz Studio":
             st.warning("Please paste an article first.")
         else:
             with st.spinner("Building your multi-question quiz …"):
+                import time
+                t0 = time.time()
                 quiz_items = _build_quiz_items(
-                    article_input, vectorizer, w2v_model, ensemble, kmeans
+                    article_input, vectorizer, w2v_model, ensemble, kmeans, ranker
                 )
+                st.session_state.latency = time.time() - t0
 
             if not quiz_items:
                 st.error("Could not extract questions from this article. Try a longer passage.")
@@ -643,23 +670,29 @@ if page == "📝 Quiz Studio":
 
 
                 if item["hints"]:
-                    with st.expander("💡 Contextual Hints", expanded=False):
-                        for i, hint in enumerate(item["hints"], 1):
-                            st.markdown(
-                                f"""
-                                <div style="
-                                    background:#0f2744; border:1px solid #1e3a5f;
-                                    border-radius:10px; padding:12px 16px; margin:8px 0;
-                                    font-size:14px; color:#cbd5e1; line-height:1.6;
-                                ">
-                                    <span style="color:#38bdf8; font-weight:700;">
-                                        Hint {i}&nbsp;
-                                    </span>
-                                    {hint}
-                                </div>
-                                """,
-                                unsafe_allow_html=True,
-                            )
+                    st.markdown("---")
+                    st.markdown("##### 💡 Contextual Hints")
+                    
+                    unlocked = st.session_state.hints_unlocked
+                    
+                    for i in range(min(unlocked, len(item["hints"]))):
+                        st.markdown(
+                            f"""
+                            <div style="background:#0f2744; border:1px solid #1e3a5f; border-radius:10px; padding:12px 16px; margin:8px 0; font-size:14px; color:#cbd5e1;">
+                                <span style="color:#38bdf8; font-weight:700;">Hint {i+1}</span>: {item["hints"][i]}
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                    if unlocked < len(item["hints"]):
+                        if st.button(f"🔓 Show Hint {unlocked + 1}", key=f"hint_btn_{current_idx}_{unlocked}"):
+                            st.session_state.hints_unlocked += 1
+                            st.rerun()
+                    else:
+                        st.info("💡 All hints revealed.")
+                        if st.button("👁️ Reveal Answer", key=f"reveal_{current_idx}"):
+                            st.warning(f"The correct answer is: **{item['options'][item['correct_idx']]}**")
 
 
                 nav_left, nav_right = st.columns([1, 1])
@@ -668,6 +701,7 @@ if page == "📝 Quiz Studio":
                     if current_idx > 0:
                         if st.button("← Previous", use_container_width=True):
                             st.session_state.current_q_idx -= 1
+                            st.session_state.hints_unlocked = 0
                             st.rerun()
 
                 with nav_right:
@@ -675,6 +709,7 @@ if page == "📝 Quiz Studio":
                         if current_idx < total_qs - 1:
                             if st.button("Next →", use_container_width=True):
                                 st.session_state.current_q_idx += 1
+                                st.session_state.hints_unlocked = 0
                                 st.rerun()
                         else:
                             if st.button("🏁 Finish Quiz", use_container_width=True):
@@ -702,6 +737,9 @@ elif page == "📊 Analytics Dashboard":
         unsafe_allow_html=True,
     )
 
+    if st.session_state.latency > 0:
+        st.info(f"⏱️ **Last Generation Latency:** {st.session_state.latency:.2f} seconds")
+
     scores_a, scores_b = load_scores()
 
     if not scores_a and not scores_b:
@@ -726,7 +764,11 @@ elif page == "📊 Analytics Dashboard":
             )
             cols = st.columns(len(scores_a))
             for col, (metric, score) in zip(cols, scores_a.items()):
-                _metric_card(metric, score, col)
+                # Custom handling for Silhouette Score which is not a %
+                if metric == "Silhouette Score":
+                     col.metric(metric, f"{score:.4f}")
+                else:
+                    _metric_card(metric, score, col)
 
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -781,4 +823,25 @@ elif page == "📊 Analytics Dashboard":
                 | Distractor Generation | Word2Vec semantic neighbours, passage-filtered |
                 | Evaluation | BLEU (NLTK), ROUGE-1/2/L (`rouge-score`), METEOR (NLTK) |
                 """
+            )
+
+        if st.session_state.answers_given:
+            st.markdown("#### Export Session Data")
+            log_data = []
+            for q_idx, item in enumerate(st.session_state.quiz_items):
+                given = st.session_state.answers_given.get(q_idx)
+                log_data.append({
+                    "Question": item["question_stem"],
+                    "Correct Answer": item["answer_chunk"],
+                    "User Choice": item["options"][given] if given is not None else "N/A",
+                    "Is Correct": (given == item["correct_idx"]) if given is not None else False
+                })
+            log_df = pd.DataFrame(log_data)
+            csv = log_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Session Results (CSV)",
+                data=csv,
+                file_name="quiz_session_log.csv",
+                mime="text/csv",
+                use_container_width=True,
             )

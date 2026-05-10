@@ -11,3 +11,6 @@ AI_Project_2026/processed/
 *.joblib
 *.npy
 *.npz
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore

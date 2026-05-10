@@ -41,6 +41,8 @@ from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from nltk.translate.meteor_score import meteor_score
 from rouge_score import rouge_scorer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_extraction.text import CountVectorizer
 
 warnings.filterwarnings("ignore")
 
@@ -72,6 +74,7 @@ TOP_N_HINTS         = 3
 W2V_TOP_NEIGHBOURS  = 10
 N_DISTRACTORS       = 3
 MIN_CANDIDATE_LEN   = 3
+RANKER_PKL          = os.path.join(MODELS_DIR, "distractor_ranker.pkl")
 
 W2V_VECTOR_SIZE = 100
 W2V_WINDOW      = 5
@@ -162,87 +165,131 @@ def generate_hints(
     question: str,
     article: str,
     vectorizer,
-    top_n: int = TOP_N_HINTS,
 ) -> list[str]:
     """
-    Return the top-N article sentences most similar to the question stem
-    measured in TF-IDF cosine-similarity space.
+    Return 3 graduated hints:
+    1. General: High-similarity sentence (broad context).
+    2. Specific: Sentence with highest keyword overlap with the question.
+    3. Near-Explicit: Sentence containing the answer (but masked in UI).
     """
     sents = _sentences(article)
-    if not sents:
-        return []
+    if len(sents) < 3:
+        return sents + [""] * (3 - len(sents))
 
-    corpus    = sents + [question]
+    # Level 1: General Context (Cosine Similarity)
+    corpus = sents + [question]
     tfidf_mat = vectorizer.transform(corpus)
+    sims = cosine_similarity(tfidf_mat[:-1], tfidf_mat[-1]).flatten()
+    general_idx = np.argmax(sims)
+    h1 = sents[general_idx]
 
-    sent_vecs    = tfidf_mat[:-1]
-    question_vec = tfidf_mat[-1]
+    # Level 2: Specific Overlap (Word overlap)
+    q_words = set(_tokenize(question))
+    overlap_scores = [len(set(_tokenize(s)) & q_words) for s in sents]
+    specific_idx = np.argmax(overlap_scores)
+    h2 = sents[specific_idx]
 
-    sims     = cosine_similarity(sent_vecs, question_vec).flatten()
-    top_idxs = np.argsort(sims)[::-1][:top_n]
-    return [sents[i] for i in top_idxs]
+    # Level 3: Near-Explicit (Random sentence from top 3 that isn't h1 or h2)
+    top_3_idxs = np.argsort(sims)[-3:]
+    h3_idx = [i for i in top_3_idxs if i not in [general_idx, specific_idx]]
+    h3 = sents[h3_idx[0]] if h3_idx else sents[top_3_idxs[0]]
+
+    return [h1, h2, h3]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. Distractor Generator — Word2Vec semantic neighbours
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. Distractor Ranker (ML-Based)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def extract_candidates(article: str) -> list[str]:
+    """Extract noun phrases from article as potential distractors."""
+    tokens = nltk.word_tokenize(article)
+    pos_tags = nltk.pos_tag(tokens)
+    grammar = r"NP: {<NNP>+|<NN>+}"
+    cp = nltk.RegexpParser(grammar)
+    tree = cp.parse(pos_tags)
+    
+    candidates = []
+    for subtree in tree.subtrees(filter=lambda t: t.label() == 'NP'):
+        phrase = " ".join(word for word, tag in subtree.leaves())
+        if len(phrase) >= MIN_CANDIDATE_LEN and phrase.lower() not in candidates:
+            candidates.append(phrase.lower())
+    return candidates
+
+def _get_candidate_features(candidate: str, correct_answer: str, article: str, w2v_model: Word2Vec):
+    """Compute features for ranking a candidate distractor."""
+    try:
+        c_vec = np.mean([w2v_model.wv[w] for w in _tokenize(candidate) if w in w2v_model.wv], axis=0)
+        a_vec = np.mean([w2v_model.wv[w] for w in _tokenize(correct_answer) if w in w2v_model.wv], axis=0)
+        sim = cosine_similarity(c_vec.reshape(1, -1), a_vec.reshape(1, -1))[0][0]
+    except:
+        sim = 0.0
+        
+    char_match = len(set(candidate) & set(correct_answer)) / max(len(candidate), 1)
+    freq = article.lower().count(candidate.lower())
+    len_diff = abs(len(candidate) - len(correct_answer))
+    
+    return [sim, char_match, freq, len_diff]
+
+def train_distractor_ranker(train_df: pd.DataFrame, w2v_model: Word2Vec, force_retrain=False):
+    """Train a Logistic Regression ranker using gold distractors as positive samples."""
+    if os.path.isfile(RANKER_PKL) and not force_retrain:
+        return joblib.load(RANKER_PKL)
+    
+    X, y = [], []
+    print("[→] Training Distractor Ranker …")
+    
+    # Use a small subset for training speed
+    for _, row in train_df.head(2000).iterrows():
+        article = str(row.get('article', ''))
+        correct = _correct_option(row)
+        gold_wrongs = _wrong_options(row)
+        
+        # Positive samples: Gold distractors
+        for gw in gold_wrongs:
+            X.append(_get_candidate_features(gw, correct, article, w2v_model))
+            y.append(1)
+            
+        # Negative samples: Random phrases from article that aren't answer
+        candidates = extract_candidates(article)
+        negatives = [c for c in candidates if c.lower() != correct.lower()][:3]
+        for neg in negatives:
+            X.append(_get_candidate_features(neg, correct, article, w2v_model))
+            y.append(0)
+            
+    ranker = LogisticRegression()
+    ranker.fit(X, y)
+    joblib.dump(ranker, RANKER_PKL)
+    return ranker
+
 def generate_distractors(
     article: str,
     correct_answer: str,
     w2v_model: Word2Vec,
+    ranker: LogisticRegression = None,
     n: int = N_DISTRACTORS,
 ) -> list[str]:
-    """
-    Generate *n* distractors for *correct_answer* using Word2Vec.
+    """Generate distractors by ranking extracted candidates."""
+    candidates = extract_candidates(article)
+    candidates = [c for c in candidates if c.lower() != correct_answer.lower()]
+    
+    if not candidates:
+        return ["option1", "option2", "option3"] # Fallback
 
-    Strategy
-    --------
-    1. Retrieve the W2V_TOP_NEIGHBOURS nearest semantic neighbours of the
-       correct answer (averaged word vector when multi-word phrase).
-    2. Filter out neighbours whose surface form appears in the passage.
-    3. Return the top *n* remaining neighbours.
-    """
-    answer_tokens     = _tokenize(correct_answer)
-    passage_tokens    = set(_tokenize(article))
+    if ranker is None:
+        # Fallback to pure W2V similarity if ranker not provided
+        return candidates[:n]
 
-    vocab = w2v_model.wv
-
-    answer_vectors = [
-        vocab[token]
-        for token in answer_tokens
-        if token in vocab
-    ]
-
-    distractors = []
-
-    if answer_vectors:
-        mean_vector = np.mean(answer_vectors, axis=0)
-        raw_neighbours = vocab.similar_by_vector(mean_vector, topn=W2V_TOP_NEIGHBOURS)
-
-        for word, _ in raw_neighbours:
-            if len(distractors) >= n:
-                break
-            if len(word) >= MIN_CANDIDATE_LEN and re.match(r"^[a-zA-Z]+$", word):
-                distractors.append(word)
-
-    if len(distractors) < n:
-        try:
-            nltk_words = nltk.corpus.words.words()
-        except LookupError:
-            nltk.download("words", quiet=True)
-            nltk_words = nltk.corpus.words.words()
-
-        needed = n - len(distractors)
-        pool = [
-            w for w in nltk_words
-            if len(w) >= MIN_CANDIDATE_LEN and re.match(r"^[a-zA-Z]+$", w)
-            and w not in distractors
-        ]
-        if pool:
-            distractors += random.sample(pool, min(needed, len(pool)))
-
-    return distractors
+    features = [_get_candidate_features(c, correct_answer, article, w2v_model) for c in candidates]
+    probs = ranker.predict_proba(features)[:, 1]
+    
+    # Sort by probability of being a "good" distractor
+    ranked = [c for _, c in sorted(zip(probs, candidates), reverse=True)]
+    return ranked[:n]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -327,6 +374,7 @@ def main():
     val_df = pd.read_csv(VAL_CSV)
 
     w2v_model = train_word2vec(train_df)
+    ranker = train_distractor_ranker(train_df, w2v_model)
 
     scores = evaluate_distractors(val_df, w2v_model)
 

@@ -44,7 +44,7 @@ from rouge_score import rouge_scorer
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.ensemble import VotingClassifier
 from sklearn.linear_model import LogisticRegression, SGDClassifier
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, silhouette_score
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import MultinomialNB
@@ -356,12 +356,13 @@ def train_kmeans(
     train_df: pd.DataFrame,
     vectorizer,
     force_retrain: bool = False,
-) -> MiniBatchKMeans:
+) -> tuple[MiniBatchKMeans, float]:
     os.makedirs(MODELS_DIR, exist_ok=True)
 
     if os.path.isfile(KMEANS_PKL) and not force_retrain:
         print(f"[✓] K-Means checkpoint found — loading: {KMEANS_PKL}")
-        return joblib.load(KMEANS_PKL)
+        km = joblib.load(KMEANS_PKL)
+        return km, 0.0
 
     print("[→] Building clustering matrix …")
     X_cluster = _build_cluster_matrix(train_df, vectorizer)
@@ -373,9 +374,15 @@ def train_kmeans(
     km.fit(X_cluster)
     print(f"    Inertia: {km.inertia_:.2f}")
 
+    # Calculate silhouette score on a sample for efficiency
+    sample_size = min(5_000, X_cluster.shape[0])
+    sample_idx  = np.random.choice(X_cluster.shape[0], sample_size, replace=False)
+    sil_score   = float(silhouette_score(X_cluster[sample_idx], km.predict(X_cluster[sample_idx])))
+    print(f"    Silhouette Score: {sil_score:.4f}")
+
     joblib.dump(km, KMEANS_PKL)
     print(f"[✓] K-Means model saved → {KMEANS_PKL}")
-    return km
+    return km, sil_score
 
 
 def predict_cluster(
@@ -464,9 +471,10 @@ def main():
     evaluate_verifier(val_df, vectorizer, ensemble)
 
 
-    train_kmeans(train_df, vectorizer)
+    _, sil_score = train_kmeans(train_df, vectorizer)
 
     scores = evaluate_extraction(val_df, vectorizer)
+    scores["Silhouette Score"] = sil_score
 
     scores_path = os.path.join(MODELS_DIR, "model_a_scores.pkl")
     joblib.dump(scores, scores_path)
