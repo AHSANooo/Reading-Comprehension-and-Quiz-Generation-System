@@ -585,8 +585,8 @@ if page == "📝 Quiz Studio":
 
                     verifier_label, verifier_confidence = (
                         verify_option(
+                            item["question_stem"],
                             chosen_word,
-                            "",
                             article_input,
                             vectorizer,
                             ensemble,
