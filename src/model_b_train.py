@@ -53,13 +53,7 @@ for _pkg in ("wordnet", "punkt", "punkt_tab", "averaged_perceptron_tagger",
     nltk.download(_pkg, quiet=True)
 
 
-BASE_DIR = "/content/drive/MyDrive/AI_Project_2026"
-if not os.path.isdir(BASE_DIR):
-    LOCAL_BASE = "/home/ahsan/Documents/Uni work/Sem 6/AI Lab/Project/AI_Project_2026"
-    if os.path.isdir(LOCAL_BASE):
-        BASE_DIR = LOCAL_BASE
-    else:
-        BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 PROCESSED_DIR = os.path.join(BASE_DIR, "processed")
 MODELS_DIR    = os.path.join(BASE_DIR, "models")
