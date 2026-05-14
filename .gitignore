@@ -1,16 +1,32 @@
-AI Project/dataset/
-AI_Project_2026/dataset/
-venv/
-/venv/
-# Datasets
-AI_Project_2026/dataset/
-AI_Project_2026/processed/
-
-# ML artifacts
+# ========================
+# Data & Models (Crucial for GitHub push limits)
+# ========================
+dataset/
+processed/
+*.csv
+*.tsv
+*.dat
+*.h5
+*.pb
+*.pt
+*.pth
 *.pkl
 *.joblib
-*.npy
-*.npz
-temp_auto_push.bat
-temp_interactive_push.bat
-.gitignore
+*.safetensors
+
+# ========================
+# Streamlit & Env
+# ========================
+.streamlit/secrets.toml
+.env
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# ========================
+# Jupyter & Logs
+# ========================
+.ipynb_checkpoints/
+*.log
