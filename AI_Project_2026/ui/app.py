@@ -26,6 +26,7 @@ import joblib
 import nltk
 import numpy as np
 import streamlit as st
+import pandas as pd
 from gensim.models import Word2Vec
 
 BASE_DIR = "/content/drive/MyDrive/AI_Project_2026"
@@ -130,6 +131,7 @@ def _init_state():
         "answers_given"  : {},
         "latency"        : 0.0,
         "hints_unlocked" : 0,
+        "load_random"    : False,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -464,6 +466,12 @@ _init_state()
 
 if page == "📝 Quiz Studio":
 
+    if st.session_state.load_random:
+        if os.path.isfile(VAL_CSV):
+            df_val = pd.read_csv(VAL_CSV)
+            st.session_state.article_input = df_val.sample(1).iloc[0]['article']
+        st.session_state.load_random = False
+
     st.markdown(
         """
         <h1 style="font-size:32px; font-weight:800;
@@ -491,13 +499,8 @@ if page == "📝 Quiz Studio":
 
     with col_rnd:
         if st.button("🎲 Random Sample", use_container_width=True):
-            if os.path.isfile(VAL_CSV):
-                df_val = pd.read_csv(VAL_CSV)
-                random_row = df_val.sample(1).iloc[0]
-                st.session_state.article_input = random_row['article']
-                st.rerun()
-            else:
-                st.error("Validation dataset not found for samples.")
+            st.session_state.load_random = True
+            st.rerun()
 
     with col_gen:
         generate_clicked = st.button("⚡ Generate Quiz", use_container_width=True)
@@ -794,8 +797,6 @@ elif page == "📊 Analytics Dashboard":
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("#### Score Comparison")
-
-        import pandas as pd
 
         all_metrics = sorted(set(list(scores_a.keys()) + list(scores_b.keys())))
         rows = [
