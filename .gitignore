@@ -2,8 +2,10 @@
 # Data & Models (Crucial for GitHub push limits)
 # ========================
 dataset/
-processed/
+processed/*
+!processed/val.csv
 *.csv
+!val.csv
 *.tsv
 *.dat
 *.h5
@@ -11,6 +13,12 @@ processed/
 *.pt
 *.pth
 *.pkl
+!models/tfidf_vectorizer.pkl
+!models/verifier_ensemble_model.pkl
+!models/kmeans_model.pkl
+!models/distractor_ranker.pkl
+!models/model_a_scores.pkl
+!models/model_b_scores.pkl
 *.joblib
 *.safetensors
 /vscode
