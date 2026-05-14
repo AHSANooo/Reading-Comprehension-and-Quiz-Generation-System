@@ -220,11 +220,11 @@ def _build_quiz_items(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# UI helpers
+# UI helpers (Using isolated inline CSS to avoid breaking Streamlit widgets)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _metric_card(label: str, value: float, col):
-    pct    = round(value * 100, 1)
+    pct = round(value * 100, 1)
     col.markdown(
         f"""
         <div style="
@@ -236,10 +236,10 @@ def _metric_card(label: str, value: float, col):
             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
             margin-bottom: 16px;
         ">
-            <div style="font-size:13px; color:#64748b; font-weight:500; text-transform:uppercase; letter-spacing:0.5px;">{label}</div>
-            <div style="font-size:32px; font-weight:700; color:#0f172a; margin-top:8px; margin-bottom:12px;">{pct}%</div>
+            <div style="font-size:12px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">{label}</div>
+            <div style="font-size:28px; font-weight:700; color:#0f172a; margin-top:8px; margin-bottom:12px;">{pct}%</div>
             <div style="height:4px; background:#f1f5f9; border-radius:2px; overflow:hidden;">
-                <div style="width:{min(pct, 100)}%; height:100%; background:#3b82f6; border-radius:2px;"></div>
+                <div style="width:{min(pct, 100)}%; height:100%; background:#4f46e5; border-radius:2px;"></div>
             </div>
         </div>
         """,
@@ -251,12 +251,12 @@ def _progress_bar_html(current: int, total: int) -> str:
     pct = int((current / total) * 100) if total else 0
     return f"""
     <div style="margin: 12px 0 24px;">
-        <div style="display:flex; justify-content:space-between; font-size:13px; color:#64748b; font-weight:500; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; font-size:14px; color:#475569; font-weight:600; margin-bottom:8px;">
             <span>Assessment Progress</span>
             <span>{current} of {total}</span>
         </div>
-        <div style="height:6px; background:#f1f5f9; border-radius:3px; overflow:hidden;">
-            <div style="width:{pct}%; height:100%; background:#3b82f6; border-radius:3px; transition:width 0.4s ease;"></div>
+        <div style="height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden;">
+            <div style="width:{pct}%; height:100%; background:#4f46e5; border-radius:4px; transition:width 0.4s ease;"></div>
         </div>
     </div>
     """
@@ -267,16 +267,16 @@ def _question_card_html(stem: str) -> str:
     <div style="
         background: #ffffff;
         border: 1px solid #e2e8f0;
-        border-left: 4px solid #3b82f6;
+        border-left: 4px solid #4f46e5;
         border-radius: 8px;
         padding: 24px;
         margin: 12px 0 24px;
         box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
     ">
-        <div style="font-size:12px; color:#3b82f6; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
+        <div style="font-size:12px; color:#4f46e5; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
             Question
         </div>
-        <div style="font-size:18px; font-weight:500; color:#1e293b; margin-top:8px; line-height:1.5;">
+        <div style="font-size:18px; font-weight:500; color:#0f172a; margin-top:12px; line-height:1.6;">
             {stem}
         </div>
     </div>
@@ -284,7 +284,7 @@ def _question_card_html(stem: str) -> str:
 
 
 def _score_summary_html(correct_count: int, total: int) -> str:
-    pct    = int((correct_count / total) * 100) if total else 0
+    pct = int((correct_count / total) * 100) if total else 0
     return f"""
     <div style="
         background: #ffffff;
@@ -295,106 +295,41 @@ def _score_summary_html(correct_count: int, total: int) -> str:
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
         margin: 24px 0;
     ">
-        <div style="font-size:14px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:1px;">
+        <div style="font-size:14px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:1px;">
             Assessment Complete
         </div>
-        <div style="font-size:56px; font-weight:800; color:#1e293b; margin:16px 0;">
+        <div style="font-size:56px; font-weight:800; color:#0f172a; margin:16px 0;">
             {correct_count} <span style="font-size:32px; color:#94a3b8; font-weight:600;">/ {total}</span>
         </div>
-        <div style="font-size:16px; color:#475569; font-weight:500;">
-            Overall Accuracy: <strong style="color:#3b82f6;">{pct}%</strong>
+        <div style="font-size:18px; color:#475569; font-weight:500;">
+            Overall Accuracy: <strong style="color:#4f46e5;">{pct}%</strong>
         </div>
     </div>
     """
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Page config & global CSS
+# Page config
 # ══════════════════════════════════════════════════════════════════════════════
 
 st.set_page_config(
     page_title="PrepSpace | Comprehension",
     page_icon="📚",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="expanded",
 )
 
+# Minimal CSS to hide default Streamlit top padding and footer, 
+# strictly avoiding global component overrides.
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-    .stApp { background-color: #f8fafc; }
-
-    section[data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #e2e8f0;
-    }
-
-    .stTextArea label {
-        font-weight: 600 !important;
-        color: #1e293b !important;
-        font-size: 15px !important;
-    }
-
-    .stTextArea textarea {
-        background-color: #ffffff !important;
-        color: #1e293b !important;
-        border: 1px solid #cbd5e1 !important;
-        border-radius: 8px !important;
-        font-size: 15px !important;
-        box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05) !important;
-        line-height: 1.6 !important;
-    }
-
-    .stTextArea textarea:focus {
-        border-color: #3b82f6 !important;
-        box-shadow: 0 0 0 1px #3b82f6 !important;
-    }
-
-    .stButton > button {
-        background-color: #ffffff !important;
-        color: #3b82f6 !important;
-        border: 1px solid #cbd5e1 !important;
-        border-radius: 6px !important;
-        font-weight: 500 !important;
-        padding: 8px 16px !important;
-        transition: all 0.2s ease !important;
-        box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05) !important;
-    }
-    .stButton > button:hover {
-        background-color: #f1f5f9 !important;
-        border-color: #94a3b8 !important;
-    }
-
-    .stRadio > div { gap: 12px !important; }
-
-    .stRadio label {
-        background: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 8px !important;
-        padding: 16px !important;
-        color: #1e293b !important;
-        font-size: 15px !important;
-        cursor: pointer !important;
-        transition: all 0.2s ease !important;
-        box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05) !important;
-    }
-    .stRadio label:hover {
-        border-color: #94a3b8 !important;
-        background: #f8fafc !important;
-    }
-
-    hr { border-color: #e2e8f0 !important; margin: 32px 0 !important; }
-
-    /* Hide standard Streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    .stAlert { border-radius: 8px !important; border: 1px solid #e2e8f0 !important; }
-    
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -408,12 +343,12 @@ st.markdown(
 with st.sidebar:
     st.markdown(
         """
-        <div style="padding: 24px 8px 32px 8px;">
-            <div style="font-size:24px; font-weight:700; color:#0f172a; letter-spacing:-0.5px;">
+        <div style="padding: 16px 0 24px 0;">
+            <div style="font-size:26px; font-weight:800; color:#0f172a; letter-spacing:-0.5px;">
                 PrepSpace
             </div>
-            <div style="font-size:13px; font-weight:500; color:#64748b; margin-top:4px;">
-                Reading Comprehension Platform
+            <div style="font-size:14px; font-weight:500; color:#64748b; margin-top:4px;">
+                Reading Comprehension
             </div>
         </div>
         """,
@@ -428,7 +363,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown(
-        "<div style='font-size:12px; font-weight:500; color:#94a3b8; text-align:left; padding-left:8px;'>"
+        "<div style='font-size:12px; font-weight:500; color:#94a3b8;'>"
         "v1.0.0 &middot; Open Source Edition"
         "</div>",
         unsafe_allow_html=True,
@@ -462,11 +397,11 @@ if page == "Workspace":
 
     st.markdown(
         """
-        <div style="margin-bottom:32px;">
-            <h1 style="font-size:28px; font-weight:700; color:#0f172a; margin-bottom:8px; letter-spacing:-0.5px;">
-                Reading Assessment
+        <div style="margin-bottom:24px;">
+            <h1 style="font-size:32px; font-weight:800; color:#0f172a; margin-bottom:8px; letter-spacing:-0.5px;">
+                Assessment Studio
             </h1>
-            <p style="color:#64748b; font-size:15px; margin-top:0;">
+            <p style="color:#64748b; font-size:16px; margin-top:0;">
                 Input a passage below to generate a contextual comprehension assessment.
             </p>
         </div>
@@ -476,23 +411,24 @@ if page == "Workspace":
 
     article_input = st.text_area(
         "Reading Passage",
-        height=220,
-        placeholder="Paste your passage here...",
-        key="article_input",
+        height=240,
+        placeholder="Paste your reading passage here...",
+        label_visibility="collapsed",
+        key="article_input"
     )
 
-    col_gen, col_rnd, col_rst, _ = st.columns([2, 2, 2, 6])
+    col_gen, col_rnd, col_rst = st.columns([3, 2, 2])
+
+    with col_gen:
+        generate_clicked = st.button("Generate Assessment", type="primary", use_container_width=True)
 
     with col_rnd:
-        if st.button("Load Sample"):
+        if st.button("Load Sample", use_container_width=True):
             st.session_state.load_random = True
             st.rerun()
 
-    with col_gen:
-        generate_clicked = st.button("Generate Assessment")
-
     with col_rst:
-        if st.button("Reset Session"):
+        if st.button("Reset Session", use_container_width=True):
             _reset_quiz()
             st.rerun()
 
@@ -521,7 +457,7 @@ if page == "Workspace":
 
     if st.session_state.quiz_generated:
 
-        st.markdown("<hr style='margin: 40px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin: 40px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
 
         quiz_items  = st.session_state.quiz_items
         total_qs    = len(quiz_items)
@@ -536,12 +472,11 @@ if page == "Workspace":
             st.markdown(_score_summary_html(correct_count, total_qs),
                         unsafe_allow_html=True)
 
-            st.markdown("<h4 style='color:#0f172a; font-size:18px; font-weight:600; margin-top:32px; margin-bottom:16px;'>Response Review</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='color:#0f172a; font-size:20px; font-weight:700; margin-top:32px; margin-bottom:16px;'>Response Review</h4>", unsafe_allow_html=True)
             for q_idx, item in enumerate(quiz_items):
                 chosen      = given.get(q_idx)
                 is_correct  = (chosen == item["correct_idx"])
                 
-                status_color = "#10b981" if is_correct else "#ef4444"
                 status_text = "Correct" if is_correct else "Incorrect"
                 correct_txt = item["options"][item["correct_idx"]]
 
@@ -551,7 +486,7 @@ if page == "Workspace":
                         unsafe_allow_html=True,
                     )
                     
-                    st.markdown(f"<div style='font-size:14px; font-weight:600; color:#64748b; margin-bottom:12px;'>Choices</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:14px; font-weight:700; color:#475569; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px;'>Choices</div>", unsafe_allow_html=True)
                     
                     for label, opt in zip(OPTION_LABELS, item["options"]):
                         if opt == correct_txt:
@@ -561,14 +496,14 @@ if page == "Workspace":
                         else:
                             prefix = f"<span style='color:#94a3b8; font-weight:bold;'>&nbsp;&nbsp;{label}.</span>"
                             
-                        st.markdown(f"<div style='margin-bottom:8px; font-size:15px; color:#1e293b;'>{prefix} &nbsp;{opt}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='margin-bottom:8px; font-size:16px; color:#1e293b;'>{prefix} &nbsp;{opt}</div>", unsafe_allow_html=True)
 
                     if item["hints"]:
-                        st.markdown("<div style='margin-top:24px; font-size:14px; font-weight:600; color:#64748b; margin-bottom:12px;'>Context Used</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='margin-top:24px; font-size:14px; font-weight:700; color:#475569; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px;'>Context Used</div>", unsafe_allow_html=True)
                         for i, hint in enumerate(item["hints"], 1):
                             st.markdown(
-                                f"<div style='background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; margin-bottom:8px; font-size:14px; color:#475569;'>"
-                                f"<strong>Reference {i}:</strong> {hint}</div>",
+                                f"<div style='background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; margin-bottom:8px; font-size:14px; color:#334155; line-height:1.5;'>"
+                                f"<strong style='color:#4f46e5;'>Reference {i}:</strong> {hint}</div>",
                                 unsafe_allow_html=True
                             )
 
@@ -576,147 +511,146 @@ if page == "Workspace":
             current_idx = st.session_state.current_q_idx
             item        = quiz_items[current_idx]
 
-            with st.container():
-                st.markdown(
-                    _progress_bar_html(current_idx + 1, total_qs),
-                    unsafe_allow_html=True,
+            st.markdown(
+                _progress_bar_html(current_idx + 1, total_qs),
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                _question_card_html(item["question_stem"]),
+                unsafe_allow_html=True,
+            )
+
+            radio_options = [
+                f"{label}.  {opt}"
+                for label, opt in zip(OPTION_LABELS, item["options"])
+            ]
+
+            already_answered = current_idx in given
+
+            if already_answered:
+                chosen_idx = given[current_idx]
+
+                st.radio(
+                    "Your response",
+                    radio_options,
+                    index=chosen_idx,
+                    key=f"radio_{current_idx}_done",
+                    disabled=True,
+                    label_visibility="collapsed",
                 )
 
-                st.markdown(
-                    _question_card_html(item["question_stem"]),
-                    unsafe_allow_html=True,
+                chosen_option_text = item["options"][chosen_idx]
+                chosen_word = item["option_words"][chosen_idx]
+
+                verifier_label, _ = (
+                    verify_option(
+                        item["question_stem"],
+                        chosen_word,
+                        article_input,
+                        vectorizer,
+                        ensemble,
+                    )
+                    if ensemble is not None
+                    else (int(chosen_idx == item["correct_idx"]), None)
                 )
+                
+                # Compute realistic confidence based on verifier model
+                verifier_confidence = random.uniform(0.75, 0.95) if verifier_label == 1 else random.uniform(0.35, 0.55)
 
-                radio_options = [
-                    f"{label}.  {opt}"
-                    for label, opt in zip(OPTION_LABELS, item["options"])
-                ]
+                is_correct = (chosen_idx == item["correct_idx"])
 
-                already_answered = current_idx in given
-
-                if already_answered:
-                    chosen_idx = given[current_idx]
-
-                    st.radio(
-                        "Your response",
-                        radio_options,
-                        index=chosen_idx,
-                        key=f"radio_{current_idx}_done",
-                        disabled=True,
-                        label_visibility="collapsed",
-                    )
-
-                    chosen_option_text = item["options"][chosen_idx]
-                    chosen_word = item["option_words"][chosen_idx]
-
-                    verifier_label, _ = (
-                        verify_option(
-                            item["question_stem"],
-                            chosen_word,
-                            article_input,
-                            vectorizer,
-                            ensemble,
-                        )
-                        if ensemble is not None
-                        else (int(chosen_idx == item["correct_idx"]), None)
-                    )
-                    
-                    # Compute realistic confidence based on verifier model
-                    # If verifier agrees with the fact it is correct, confidence is higher
-                    verifier_confidence = random.uniform(0.75, 0.95) if verifier_label == 1 else random.uniform(0.35, 0.55)
-
-                    is_correct = (chosen_idx == item["correct_idx"])
-
-                    if is_correct:
-                        st.success("Correct response.")
-                    else:
-                        correct_txt = item['options'][item['correct_idx']]
-                        st.error(f"Incorrect. The correct response was **{OPTION_LABELS[item['correct_idx']]}. {correct_txt}**")
-                    
-                    if verifier_confidence is not None:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        conf_pct = verifier_confidence * 100
-                        st.markdown(
-                            f"""
-                            <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; background-color: #ffffff; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                                    <span style="font-size: 14px; color: #475569; font-weight:600;">System Verification Score</span>
-                                    <span style="font-size: 14px; font-weight: 700; color: #3b82f6;">{conf_pct:.1f}%</span>
-                                </div>
-                                <div style="width: 100%; background-color: #f1f5f9; border-radius: 4px; height: 6px;">
-                                    <div style="width: {conf_pct}%; background-color: #3b82f6; height: 100%; border-radius: 4px;"></div>
-                                </div>
-                                <div style="margin-top: 12px; font-size: 13px; color: #94a3b8;">
-                                    Indicates the platform's confidence in this specific answer selection based on passage context.
-                                </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-
+                st.markdown("<br>", unsafe_allow_html=True)
+                if is_correct:
+                    st.success("Correct response.")
                 else:
-                    chosen_radio = st.radio(
-                        "Select your response",
-                        radio_options,
-                        index=None,
-                        key=f"radio_{current_idx}",
-                        label_visibility="collapsed",
+                    correct_txt = item['options'][item['correct_idx']]
+                    st.error(f"Incorrect. The correct response was **{OPTION_LABELS[item['correct_idx']]}. {correct_txt}**")
+                
+                if verifier_confidence is not None:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    conf_pct = verifier_confidence * 100
+                    st.markdown(
+                        f"""
+                        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; background-color: #ffffff; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                                <span style="font-size: 14px; color: #475569; font-weight:600;">System Verification Score</span>
+                                <span style="font-size: 14px; font-weight: 700; color: #4f46e5;">{conf_pct:.1f}%</span>
+                            </div>
+                            <div style="width: 100%; background-color: #f1f5f9; border-radius: 4px; height: 6px;">
+                                <div style="width: {conf_pct}%; background-color: #4f46e5; height: 100%; border-radius: 4px;"></div>
+                            </div>
+                            <div style="margin-top: 12px; font-size: 13px; color: #64748b;">
+                                Indicates the platform's confidence in this specific answer selection based on passage context.
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
                     )
 
-                    if chosen_radio is not None:
-                        chosen_idx = radio_options.index(chosen_radio)
-                        st.session_state.answers_given[current_idx] = chosen_idx
+            else:
+                chosen_radio = st.radio(
+                    "Select your response",
+                    radio_options,
+                    index=None,
+                    key=f"radio_{current_idx}",
+                    label_visibility="collapsed",
+                )
+
+                if chosen_radio is not None:
+                    chosen_idx = radio_options.index(chosen_radio)
+                    st.session_state.answers_given[current_idx] = chosen_idx
+                    st.rerun()
+
+
+            if item["hints"]:
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                unlocked = st.session_state.hints_unlocked
+                
+                if unlocked > 0:
+                    st.markdown("<div style='font-size:14px; font-weight:700; color:#475569; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px;'>Context Helpers</div>", unsafe_allow_html=True)
+                
+                for i in range(min(unlocked, len(item["hints"]))):
+                    st.markdown(
+                        f"""
+                        <div style="background:#ffffff; border:1px solid #e2e8f0; border-left:3px solid #cbd5e1; border-radius:6px; padding:16px; margin:8px 0; font-size:14px; color:#334155; line-height:1.5;">
+                            <span style="color:#64748b; font-weight:700; margin-right:8px; text-transform:uppercase;">Hint {i+1}</span> {item["hints"][i]}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                hint_col, _, _ = st.columns([3, 3, 4])
+                with hint_col:
+                    if unlocked < len(item["hints"]):
+                        if st.button(f"Show Hint {unlocked + 1}", use_container_width=True):
+                            st.session_state.hints_unlocked += 1
+                            st.rerun()
+                    else:
+                        st.markdown("<div style='font-size:13px; color:#94a3b8; font-weight:500; margin-top:8px;'>All hints displayed</div>", unsafe_allow_html=True)
+
+
+            st.markdown("<hr style='margin: 32px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
+            nav_left, nav_right = st.columns([1, 1])
+
+            with nav_left:
+                if current_idx > 0:
+                    if st.button("← Previous", use_container_width=True):
+                        st.session_state.current_q_idx -= 1
+                        st.session_state.hints_unlocked = 0
                         st.rerun()
 
-
-                if item["hints"]:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    
-                    unlocked = st.session_state.hints_unlocked
-                    
-                    if unlocked > 0:
-                        st.markdown("<div style='font-size:14px; font-weight:600; color:#64748b; margin-bottom:12px;'>Context Helpers</div>", unsafe_allow_html=True)
-                    
-                    for i in range(min(unlocked, len(item["hints"]))):
-                        st.markdown(
-                            f"""
-                            <div style="background:#ffffff; border:1px solid #e2e8f0; border-left:3px solid #cbd5e1; border-radius:6px; padding:16px; margin:8px 0; font-size:14px; color:#475569;">
-                                <span style="color:#64748b; font-weight:600; margin-right:8px;">Hint {i+1}</span> {item["hints"][i]}
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-
-                    hint_col, _, _ = st.columns([2, 4, 4])
-                    with hint_col:
-                        if unlocked < len(item["hints"]):
-                            if st.button(f"Show Hint {unlocked + 1}"):
-                                st.session_state.hints_unlocked += 1
-                                st.rerun()
-                        else:
-                            st.markdown("<div style='font-size:13px; color:#94a3b8; font-weight:500; margin-top:8px;'>All hints displayed</div>", unsafe_allow_html=True)
-
-
-                st.markdown("<hr style='margin: 32px 0;'>", unsafe_allow_html=True)
-                nav_left, nav_right = st.columns([1, 1])
-
-                with nav_left:
-                    if current_idx > 0:
-                        if st.button("← Previous"):
-                            st.session_state.current_q_idx -= 1
+            with nav_right:
+                if already_answered:
+                    if current_idx < total_qs - 1:
+                        if st.button("Next →", type="primary", use_container_width=True):
+                            st.session_state.current_q_idx += 1
                             st.session_state.hints_unlocked = 0
                             st.rerun()
-
-                with nav_right:
-                    if already_answered:
-                        if current_idx < total_qs - 1:
-                            if st.button("Next →"):
-                                st.session_state.current_q_idx += 1
-                                st.session_state.hints_unlocked = 0
-                                st.rerun()
-                        else:
-                            if st.button("Complete Assessment"):
-                                st.rerun()
+                    else:
+                        if st.button("Complete Assessment", type="primary", use_container_width=True):
+                            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -728,10 +662,10 @@ elif page == "Analytics":
     st.markdown(
         """
         <div style="margin-bottom:32px;">
-            <h1 style="font-size:28px; font-weight:700; color:#0f172a; margin-bottom:8px; letter-spacing:-0.5px;">
+            <h1 style="font-size:32px; font-weight:800; color:#0f172a; margin-bottom:8px; letter-spacing:-0.5px;">
                 Platform Analytics
             </h1>
-            <p style="color:#64748b; font-size:15px; margin-top:0;">
+            <p style="color:#64748b; font-size:16px; margin-top:0;">
                 System performance metrics evaluated against the validation benchmark.
             </p>
         </div>
@@ -742,9 +676,9 @@ elif page == "Analytics":
     if st.session_state.latency > 0:
         st.markdown(
             f"""
-            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin-bottom:24px; display:inline-block; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
-                <span style="color:#64748b; font-weight:500; font-size:14px; margin-right:12px;">Last Assessment Generation Time</span>
-                <span style="color:#0f172a; font-weight:600; font-size:15px;">{st.session_state.latency:.2f}s</span>
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin-bottom:32px; display:inline-block; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
+                <span style="color:#64748b; font-weight:600; font-size:14px; margin-right:12px; text-transform:uppercase; letter-spacing:0.5px;">Last Generation Time</span>
+                <span style="color:#0f172a; font-weight:700; font-size:16px;">{st.session_state.latency:.2f}s</span>
             </div>
             """,
             unsafe_allow_html=True
@@ -760,27 +694,29 @@ elif page == "Analytics":
             st.markdown(
                 """
                 <div style="margin:24px 0 16px;">
-                    <span style="color:#1e293b; font-size:16px; font-weight:600; letter-spacing:-0.3px;">
-                        Extraction Subsystem Performance
+                    <span style="color:#1e293b; font-size:18px; font-weight:700; letter-spacing:-0.3px;">
+                        Extraction Subsystem
                     </span>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            cols = st.columns(len(scores_a))
-            for col, (metric, score) in zip(cols, scores_a.items()):
-                if metric == "Silhouette Score":
-                     col.markdown(
-                        f"""
-                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; text-align: left; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); margin-bottom: 16px;">
-                            <div style="font-size:13px; color:#64748b; font-weight:500; text-transform:uppercase; letter-spacing:0.5px;">{metric}</div>
-                            <div style="font-size:32px; font-weight:700; color:#0f172a; margin-top:8px;">{score:.4f}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    _metric_card(metric, score, col)
+            items_a = list(scores_a.items())
+            for i in range(0, len(items_a), 3):
+                cols = st.columns(3)
+                for col, (metric, score) in zip(cols, items_a[i:i+3]):
+                    if metric == "Silhouette Score":
+                         col.markdown(
+                            f"""
+                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; text-align: left; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); margin-bottom: 16px;">
+                                <div style="font-size:12px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">{metric}</div>
+                                <div style="font-size:28px; font-weight:700; color:#0f172a; margin-top:8px;">{score:.4f}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        _metric_card(metric, score, col)
 
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -790,20 +726,22 @@ elif page == "Analytics":
             st.markdown(
                 """
                 <div style="margin:12px 0 16px;">
-                    <span style="color:#1e293b; font-size:16px; font-weight:600; letter-spacing:-0.3px;">
-                        Option Generation Performance
+                    <span style="color:#1e293b; font-size:18px; font-weight:700; letter-spacing:-0.3px;">
+                        Option Generation Subsystem
                     </span>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            cols = st.columns(len(scores_b))
-            for col, (metric, score) in zip(cols, scores_b.items()):
-                _metric_card(metric, score, col)
+            items_b = list(scores_b.items())
+            for i in range(0, len(items_b), 3):
+                cols = st.columns(3)
+                for col, (metric, score) in zip(cols, items_b[i:i+3]):
+                    _metric_card(metric, score, col)
 
 
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<h4 style='font-size:18px; font-weight:600; color:#0f172a; margin-bottom:16px;'>Metric Overview</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='font-size:20px; font-weight:700; color:#0f172a; margin-bottom:16px;'>Metric Overview</h4>", unsafe_allow_html=True)
 
         all_metrics = sorted(set(list(scores_a.keys()) + list(scores_b.keys())))
         all_metrics = [m for m in all_metrics if m != "Silhouette Score"]
@@ -815,12 +753,12 @@ elif page == "Analytics":
             }
             for m in all_metrics
         ]
-        st.dataframe(pd.DataFrame(rows), hide_index=True)
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
 
         if st.session_state.answers_given:
             st.markdown("<br><br>", unsafe_allow_html=True)
-            st.markdown("<h4 style='font-size:18px; font-weight:600; color:#0f172a; margin-bottom:16px;'>Export Workspace Data</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='font-size:20px; font-weight:700; color:#0f172a; margin-bottom:16px;'>Export Workspace Data</h4>", unsafe_allow_html=True)
             
             log_data = []
             for q_idx, item in enumerate(st.session_state.quiz_items):
