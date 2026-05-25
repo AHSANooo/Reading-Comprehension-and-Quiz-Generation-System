@@ -69,7 +69,7 @@ print("🚀 App URL:", tunnel.public_url)
 > **Re-runs after Colab disconnect** — every script checks for `.pkl` files
 > before doing any heavy computation.  If the checkpoints exist, they are
 > loaded instantly.
-
+> can use a t4 machine for it.
 ---
 
 ## Architecture
